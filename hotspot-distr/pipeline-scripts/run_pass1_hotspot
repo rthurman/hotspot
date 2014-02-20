@@ -1,0 +1,118 @@
+#! /bin/bash
+
+# Run first pass of hotspot.
+thisd=`pwd`
+thisscr="run_pass1_hotspot"
+echo
+echo $thisscr
+
+gnom=_GENOME_
+
+tags=_TAGS_
+
+# Chromosome start, stop positions
+chroms=_CHROM_FILE_
+# Hotspot binary
+hotspot=_HOTSPOT_
+
+# Duplicate tags OK?  (Set to T if yes - for DNaseI data, for instance; anything else - for ChIP, for instance - means no.)
+dupok=_DUPOK_
+
+# Location of random tags lib files; full path
+rantagd=_RANDIR_
+# Location of random hotspots; full path
+randir=_RANDIR_
+
+# Output location; full path
+outdir=_OUTDIR_
+
+# A count of uniquely-mappable bases in 10kb intervals, used for background calculations in hotspot
+umap=_MAPPABLE_FILE_
+umap10kb=$outdir/$(basename $umap).counts.10kb
+
+# Check if these results have already been computed?
+check=_CHECK_
+chkchr=_CHKCHR_
+
+# Hotspot window parameters
+winMin=_WIN_MIN_
+winMax=_WIN_MAX_
+winIncr=_WIN_INCR_
+backgrdWin=_BACKGRD_WIN_
+
+# FDR levels.  If "N", don't do random hotspots
+fdrs=_FDRS_
+
+if [ ! -e $umap10kb ]; then
+    echo "$thisscr: error: $umap10kb does not exist; needs to be generated (using run_10kb_counts)" 1>&2
+    exit 1
+fi
+
+# Total number of uniquely mappable bases in genome.
+mpblgenome=`awk '{t+=$3}END{print t}' $umap10kb`
+
+## Check availability of lib files.  In the process, find out which
+## random hotspots we need to process, and check for their lib files.
+
+proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
+if [ $dupok == "T" ]; then
+    lib=$outdir/$proj.lib.filter.txt
+else
+    lib=$outdir/$proj.lib.filter.nodup.txt
+fi
+if [ ! -e $lib ]; then
+    echo "$thisscr: error: $lib does not exist; needs to be generated" 1>&2
+else
+    drs="$outdir/$proj"
+    libs[0]=$lib
+fi
+
+## Now check for the corresponding random library 
+if [ "$fdrs" != "N" ]; then
+    if [ -e $lib.counts ]; then
+	ntag=`cat $lib.counts`
+    else
+	ntag=`wc -l $lib | cut -f1 -d" "`
+	echo $ntag > $lib.counts
+    fi
+    ntag=$((($ntag+50000)/100000))00000
+    if [ $dupok == "T" ]; then
+	ranlib=$rantagd/$ntag-ran.${gnom}.lib.filter.txt
+    else
+	ranlib=$rantagd/$ntag-ran.${gnom}.lib.filter.nodup.txt
+    fi
+    if [ ! -e $ranlib ]; then
+	echo "$thisscr: warning: $ranlib does not exist; may need to be generated" 1>&2
+    else
+	drs="$drs $randir/$ntag-ran"
+	libs[1]=$ranlib
+    fi
+fi
+
+## Combine the observed random output directories to process
+## Now call hotspot on observed and random data.
+i=0
+for dir in $drs
+do
+    proj=`basename $dir`
+    lib=${libs[$i]}
+    outd=$dir-pass1
+    outh=$outd/$proj.hotspot.out
+    if [ -e $outh ]; then
+	test=`grep $chkchr $outh | head -1`
+	if [ $check == "T" ] && [ ${#test} != 0 ]; then 
+	    echo "$thisscr: $proj pass1 already computed; skipping"
+	    cd $thisd
+	    ((i++))
+	    continue
+	fi
+    fi
+    echo "$thisscr: processing $outd"
+    mkdir -p $outd
+    cd $outd
+
+    $hotspot -range $winMin $winMax $winIncr -densWin $backgrdWin -o $proj.hotspot.out -i $lib -k $umap10kb -gendw -bckgnmsize $mpblgenome > $proj.stdout
+
+    cd $thisd
+    ((i++))
+done

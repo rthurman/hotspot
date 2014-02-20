@@ -1,0 +1,128 @@
+#! /bin/bash
+
+## Pass 2 hotspots: locate shadowed peaks by searching in 50kb windows
+## around hotspots within which we've called z-scored thresholded
+## peaks.
+thisd=`pwd`
+thisscr="run_pass2_hotspot"
+echo
+echo $thisscr
+
+gnom=_GENOME_
+
+tags=_TAGS_
+
+umap=_MAPPABLE_FILE_
+hotspot=_HOTSPOT_
+check=_CHECK_
+chkchr=_CHKCHR_
+fseed=_SEED_
+
+# Duplicate tags OK?  (Set to T if yes - for DNaseI data, for instance; anything else - for ChIP, for instance - means no.)
+dupok=_DUPOK_
+
+# Output location; full path
+outdir=_OUTDIR_
+# Location of random hotspots; full path
+rand=_RANDIR_
+# Location of random tags bed and lib files
+rantagd=_RANDIR_
+
+umap10kb=$outdir/`basename $umap`.counts.10kb
+
+# Hotspot window parameters
+winMin=_WIN_MIN_
+winMax=_WIN_MAX_
+winIncr=_WIN_INCR_
+backgrdWin=_BACKGRD_WIN_
+# hotspots within this distance will be merged
+mrgDist=_MERGE_DIST_
+# miminum z-score threshold
+thresh=_THRESH_
+# minimum hotspot width (bp)
+minSize=_MINSIZE_
+
+# FDR levels.  If "N", don't do random data.
+fdrs=_FDRS_
+
+## Find out which random hotspots we need to process, too.
+drs=""
+randrs=""
+rantags=""
+
+proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
+tagsb[0]=$outdir/$proj.bed.starch
+drs="$outdir/$proj"
+ntag=`cut -d" " -f2 $outdir/$proj-pass1/*.stdout`
+ntag=$((($ntag+50000)/100000))00000
+if [ "$fdrs" != "N" ]; then
+    tagsb[1]=$rantagd/$ntag-ran.$gnom.bed.starch
+    drs="$drs $rand/$ntag-ran"
+fi
+
+if [ ! -e $umap10kb ]; then
+    echo "$thisscr: error: $umap10kb does not exist; needs to be generated (using run_10kb_counts)" 1>&2
+    exit 1
+fi
+
+mpblgenome=`awk '{t+=$3}END{print t}' $umap10kb`
+
+i=0
+for dir in $drs
+do
+    tag=${tagsb[$i]}
+    proj=`basename $dir`
+    outd=${dir}-pass2
+    mkdir -p $outd
+    cd $outd
+    echo "$thisscr: processing $outd"
+    if [ -e $proj.pass2.hotspot.out ]; then
+	test=`grep $chkchr $proj.pass2.hotspot.out | head -1`
+	if [ $check == "T" ] && [ ${#test} != 0 ]; then 
+	    echo "$thisscr: $proj pass 2 already computed; skipping"
+	    cd $thisd
+	    ((i++))
+	    continue
+	fi
+    fi
+    hot=$dir-pass1/$proj.merge$mrgDist.wgt$minSize.zgt$thresh.wig
+
+    padbed=$proj.pad.nohotspot.bed
+    libbed=$proj.pad.nohotspot.lib.bed
+    lib=$proj.pad.nohotspot.lib.txt
+
+    ## Take background window-sized interval on either side of each hotspot, 
+    ## merge,
+    ## subtract off the hotspots,
+    ## intersect with the mappable regions of the genome.
+    echo "generating 50kb pad set..."
+    bedops --header --range $backgrdWin -m $hot \
+        | bedops --header -d - $hot \
+        | bedops -i - $umap \
+        > $padbed
+
+      ## Now find the tags falling in these regions and run hotspot on the results.
+    echo "extracting tags..."
+    if [ $dupok == "T" ]; then
+	unstarch $tag \
+	    | bedops -e - $padbed \
+	    | awk '{print $1"\t"$2"\t"$2+1}' - \
+	    | tee $libbed \
+	    | cut -f1-2 \
+	    > $lib
+    else
+	unstarch $tag \
+	    | bedops -e - $padbed \
+	    | awk '{print $1"\t"$2"\t"$2+1}' - \
+	    | uniq - \
+	    | tee $libbed \
+	    | cut -f1-2 \
+	    > $lib
+    fi
+    echo "running hotspot..."
+    $hotspot -fuzzy -fuzzy-seed $fseed -range $winMin $winMax $winIncr -densWin $backgrdWin -o $proj.pass2.hotspot.out -i $lib -k $umap10kb -gendw -bckntags $ntag -bckgnmsize $mpblgenome > $proj.pass2.stdout
+    rm $lib
+
+    cd $thisd
+    ((i++))
+done

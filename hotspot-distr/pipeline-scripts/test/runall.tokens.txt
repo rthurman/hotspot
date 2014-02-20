@@ -1,0 +1,106 @@
+[script-tokenizer]
+
+#######################################
+## Notes:  If duplicate token definitions exist, the last definition in
+##         the file will be used. Tokens can use .ini variables and declarations.
+##         See http://docs.python.org/library/configparser.html
+#######################################
+
+#######################################
+# Global tokens (used by most scripts)
+#######################################
+
+## Tags file in bam format (file extension .bam), or starched bed file
+## (file extension .bed.starch).  If the tags file is in bed.starch
+## format, and if it is in directory specified by _OUTDIR_, then it
+## needs to be in the format
+##
+##     chr  5'start  5'start+1
+##
+## That is, the file should be three column bed (no ID field, etc.)
+## containing the 1bp coordinates of the 5' ends of the tags. If
+## _TAGS_ is a bam file, or a bed.starch file not in _OUTDIR_, then
+## the bed.starch file in the above format will be generated (using
+## the strand column if present), and put in _OUTDIR_.  NOTE: if you
+## use run_badspot, then you must use bam files, or a bed.starch file
+## not in _OUTDIR_.
+
+_TAGS_ = /home/rthurman/proj/hotspot-distr-v4/data/NHDF_Ad.DNase_seq.hg19.bam
+
+## For ChIP data with an Input bam file, set _USE_INPUT_ to T, and set
+## _INPUT_TAGS_ to the name of that bam file.
+
+_USE_INPUT_ = F 
+_INPUT_TAGS_ = 
+
+## Genome 
+_GENOME_ = hg19
+## Tag length
+_K_ = 36
+## Chromosome coordinates, bed format.
+_CHROM_FILE_ = /home/rthurman/proj/hotspot-distr-v4/data/hg19.chromInfo.bed
+## Location of uniquely mappable positions in the genome for this tag length.
+_MAPPABLE_FILE_ = /home/rthurman/proj/hotspot-distr-v4/data/hg19.K36.mappable_only.bed.starch
+
+## Set DUPOK to T for DNaseI data, F for ChIP-seq data (DUPOK = T means allow duplicate reads)
+_DUPOK_ = T
+
+## FDR levels, separated by spaces if more than one. Set to N if you
+## do not want FDR thresholding (for example, if you just want SPOT
+## score computed.)  
+## _FDRS_ = "N"
+_FDRS_ = "0.01"
+
+## Tag density, 150bp window, sliding every 20bp, used for
+## peak-finding.  Will be generated, based on the _TAGS_ file, if it
+## does not exist. Assumed to be starched bed file, extension
+## bed.starch.  Can be blank, in which case the density file will be
+## generated in _OUTDIR_, and the the name will be the name of the
+## tags file, minus the bam or bed.starch extension, with the added
+## extension tagdensity.bed.starch.  
+_DENS_:
+
+## Output directories (can all be the same location).  Use full path names.
+## _OUTDIR_ contains tags files in converted bed.starch and lib.txt formats (for hotspot
+## program), and hotspot and peak results.
+## _RANDIR_ contains generated random tags (for FDR thresholding) and hotspots called on random tags.
+_OUTDIR_ = /home/rthurman/proj/hotspot-distr-v4/pipeline-scripts/test
+_RANDIR_ = /home/rthurman/proj/hotspot-distr-v4/pipeline-scripts/test
+
+## If there are any regions from which tags should be automatically
+## omitted, include those here (only if you use run_badspot). May be
+## left blank.
+_OMIT_REGIONS_: /home/rthurman/proj/hotspot-distr-v4/data/Satellite.hg19.bed
+
+## Set to T if you want scripts to skip steps that have already been done.
+_CHECK_ = T
+
+## If _CHECK_ = T, outputs are checked for completeness by searching
+## for results for the following chromsome.
+_CHKCHR_ = chrX
+
+## Hotspot program binary
+_HOTSPOT_ = /home/rthurman/proj/hotspot-distr-v4/hotspot-deploy/bin/hotspot
+
+## Clean up. Remove all intermediate files and directories if set to T.  See
+## pipeline script run_final.
+_CLEAN_ = T
+
+## Peak-finding program.
+_PKFIND_BIN_ = /home/rthurman/proj/hotspot-distr-v4/hotspot-deploy/bin/wavePeaks
+## Peak-finding smoothing level. If the resolution of the input file
+## is x, then the results are smoothed out to a scale of (2^level)*x.
+_PKFIND_SMTH_LVL_ = 3
+
+## Random number seed, used for generating random tags for FDR thresholding.
+_SEED_=101
+
+## Hotspot program parameters
+_THRESH_ = 2
+_WIN_MIN_ = 200
+_WIN_MAX_ = 300
+_WIN_INCR_ = 50
+_BACKGRD_WIN_ = 50000
+_MERGE_DIST_ = 150
+_MINSIZE_ = 10
+

@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# Merge and threshold hotspots from pass 1.  These will be used in the second pass.
+
+# miminum z-score threshold
+thresh=_THRESH_
+# hotspots within this distance will be merged
+mrgDist=_MERGE_DIST_
+pad=$((mrgDist/2))
+# minimum hotspot width (bp)
+minSize=_MINSIZE_
+# Check if these results have already been computed?
+check=_CHECK_
+chkchr=_CHKCHR_
+
+# Output location; full path
+outdir=_OUTDIR_
+# Location of random hotspots; full path
+rand=_RANDIR_
+
+tags=_TAGS_
+
+# FDR levels.  If "N", don't do random data.
+fdrs=_FDRS_
+
+thisd=`pwd`
+thisscr="run_pass1_merge_and_thresh_hotspots"
+echo
+echo $thisscr
+
+## Find out which random hotspots we need to process, too.
+proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
+drs="$outdir/$proj"
+if [ "$fdrs" != "N" ]; then
+    ntag=`cut -d" " -f2 $outdir/$proj-pass1/*.stdout`
+    ntag=$((($ntag+50000)/100000))00000
+    drs="$drs $rand/$ntag-ran"
+fi
+
+for dir in $drs
+do
+    proj=`basename $dir`
+    dir=${dir}-pass1
+    hot=$proj.hotspot.out
+    out1=$proj.wgt$minSize.zgt$thresh.wig
+    out2=$proj.merge$mrgDist.wgt$minSize.zgt$thresh.wig
+    echo $dir
+    cd $dir
+
+    if [ ! -e $hot ]; then
+	echo "$thisscr: $hot does not exist; Check results. Skipping"
+	cd $thisd
+	continue
+    fi
+    test=`cut -f1 $hot | grep $chkchr - | head -1`
+    if [ $check == "T" ] && [ ${#test} == 0 ]; then 
+	echo "$thisscr: $hot does not contain data for $chkchr; Problem? Skipping."
+	cd $thisd
+	continue
+    fi
+    
+    if [ $check == "T" ] && [ -e $out2 ]; then
+	test=`grep $chkchr $out2 | head -1`
+	if [ ${#test} != 0 ]; then 
+	    echo "$thisscr: $out2 already computed; skipping"
+	    cd $thisd
+	    continue
+	fi
+    fi
+
+    echo "track visibility=dense name=${proj}_zgt$thresh" > $out1
+
+    echo "$thisscr: extracting hotspot data..."
+    awk -v minSize=$minSize -v thresh=$thresh \
+ 	'NR>1 {if(($7 - $6 + 1) >= minSize && $8 > thresh) {print $1"\t"$6"\t"$7+1"\tid-"NR"\t"$8} else {next}}' $hot \
+	| sort-bed - \
+	| grep -vi inf \
+	| grep -vi nan \
+	>> $out1
+
+    echo "$thisscr: merging..."
+    awk -v pad=$pad '(NR>1) {left=$2 - pad; if(left < 1) left = 0; print $1"\t" left "\t" $3 + pad}' $out1 \
+	| bedops -m - \
+	| awk -v pad=$pad '{if($2 == 0) left=0; else left=$2 + pad; print $1"\t" left "\t" $3 - pad}' - \
+	| sort-bed - \
+	> new.bed
+
+    echo "track visibility=dense name=${proj}_merge_${mrgDist}_zgt$thresh" > $out2
+
+    echo "$thisscr: recovering z-scores for merged hotspots..."
+    awk '(NR>1)' $out1 \
+	| bedmap --delim "\t" --echo --max new.bed - \
+	>> $out2
+
+    rm new.bed
+    rm $out1
+    cd $thisd
+done
+

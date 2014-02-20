@@ -1,0 +1,251 @@
+Hotspot and SPOT
+----------------
+
+Hotspot is a program for identifying regions of local enrichment of
+short-read sequence tags mapped to the genome, using a binomial
+distribution model.  Regions flagged by the algorithm are called
+"hotspots."
+
+This distribution includes scripts for computing minimally thresholded
+(z-score = 2) hotspots; FDR thresholded hotspots, using randomly
+generated tags; and FDR thresholded peaks within hotspots. Also
+included is a script for computing the SPOT (Signal Portion Of Tags)
+score, a quality measure for short-read sequence experiments.  The
+SPOT score is computed as percentage of all tags that fall in
+(minimally thresholded) hotspots.
+
+IMPORTANT: See the Dependencies section, below, for program
+requirements that fall outside this distribution.
+
+Hotspot was originally conceived and written by Mike Hawrylycz, and is
+now maintained by Bob Thurman, University of Washington, with
+contributions by Eric Haugen, University of Washington, and especially
+Scott Kuehn.  Although there is no stand-alone publication for hotspot,
+the algorithm is described in detail in 
+
+Sam John et al., Chromatin accessibility pre-determines glucocorticoid
+receptor binding patterns, Nature Genetics 43, 264-268 
+
+The above should therefore serve as the primary citation for hotspot.
+
+This distribution is available via the uwencode website, at
+
+    http://uwencode.org/software/hotspot
+
+Bob Thurman
+rthurman@uw.edu
+27 Jun 2013
+
+
+Making the hotspot program
+--------------------------
+
+A compiled (Redhat linux, 64-bit) version of the hotspot binary is
+included in this distribution, in 
+
+    hotspot-deploy/bin/hotspot5
+
+Type the program name without arguments for a usage statement.
+
+To compile your own version, cd to hotspot-deploy and type "make."
+
+
+
+Running hotspot
+----------------------------------
+
+Hotspot calls, FDR thresholding and peak-calling require two passes of
+calls to hotspot (see reference, above), as well as generation of
+random data, hotspot calling on that, and peak-calling on tag
+densities.  A number of scripts are provided to do all of these for
+you properly.  A test example is provided, with test data (DNase-seq)
+in the data directory.
+
+To use the scripts provided to compute hotspots and peaks yourself,
+see the directory
+
+    pipeline-scripts/test
+
+and files runhotspot and runall.tokens.txt therein.  The file
+runall.tokens.txt contains parameters (tokens) for calling hotspot.
+To run the example you will need to edit the file paths defined in
+runall.tokens.txt to match the locations on your own file system.  The
+runhotspot file generates child scripts populated with the parameters
+defined in runall.tokens.txt, and runs the scripts.  You will need to
+change paths in runhotspot as well.  After you change these files,
+just type
+
+    ./runhotspot 
+
+on the command line in the directory containing that script.  This
+particular example is configured to run all of the steps of hotspot
+(hotspots, FDR thresholding, peak-finding, and SPOT score
+calculation), and should take about an hour total to complete all
+steps. See below for locations and descriptions of the final output.
+
+For running hotspot on your own data, please see runall.tokens.txt for
+descriptions of the adjustable parameters, the most important of which
+are described below.  You will need to change all of the paths to
+reflect your environment.  As mentioned above, the runhotspot script
+is configured to run all of the steps of hotspot.  There are
+instructions in the runhotspot script for changing the script to just
+compute SPOT scores.  The latter does not require peak-finding or FDR
+thresholding, and therefore can be done more quickly and efficiently
+than doing everything.
+
+The primary input to the hotspot program is a tags file in bam format
+(variable _TAGS_ in runall.tokens.txt).  In addition, a tag density
+file (150 bp count of tags, sliding every 20bp; variable _DENS_) is
+required for peak-calling, although that file will be generated
+automatically if needed.
+
+For ChIP-seq data, you have the option of including an additional
+ChIP-seq input file (tokens _USE_INPUT_ and _INPUT_TAGS_), which will
+trigger subtracting input tags from the ChIP tags in hotspots in the
+final scoring of hotspots.
+
+In addition to the tag file(s), some other key auxiliary files are
+required, and worth mentioning.  The hotspot program makes use of
+mappability information.  For a given tag length (k-mer size, variable
+_K_), only a subset of the genome is uniquely mappable.  Hotspot uses
+this information to help compute the background expectation for
+gauging enrichment.  The file defined by variable _MAPPABLE_FILE_ in
+runall.tokens.txt contains the mappable positions in the genome for a
+given k-mer size.  We have included a file for 36-mers and the human
+genome hg19 in the data directory.  If you need a different
+combination, we provide a script in the hotspot-deploy/bin directory,
+called enumerateUniquelyMappableSpace, which will generate the
+mappability file for you, given a genome name and a k-mer size.  If
+necessary, the script will download the appropriate fasta files from
+the UCSC browser, and then generate mappability uniqueness information
+from those, using the bowtie aligner (see Dependencies, below).  For
+this script to work, the Perl scripts included in hotspot-deploy/bin
+should be kept together, and in your path.  It is also set up to
+process all chromosomes in parallel by using a local compute cluster,
+although this dependency is easily removed (see Dependencies, below.)
+
+Chromosome start/stop coordinates, specified in bed format, are used
+by the program, using token variable _CHROM_FILE_.  A Perl script,
+writeChromInfoBed.pl, in hotspot-deploy/bin, can be used to generate
+this file, given the fasta files for that genome.
+
+For peak-finding, the routine run_wavelet_peak_finding performs a
+"level 3" wavelet smooth of the density, and finds local maxima of the
+result.  This means it smooths the density to a scale of 2^3=8 times
+the resolution of the density file.  The level of smoothing can be
+controlled by editing the _PKFIND_SMTH_LVL_ variable in
+runall.tokens.txt.
+
+
+Understanding Output
+--------------------------
+
+If all of the steps of hotspot, peak-finding and FDR thresholding are
+followed, a (potentially confusing) number of output files and
+directories are generated.  Most of these will be deleted on
+completion of the run_final step, as long as the _CLEAN_ token is set
+to "T," and will leave a final output directory whose name is the same
+as the tags file name (minus the .bam extension), appended with the
+suffix "-final".  Within this directory will be found files with
+some or all of the following names.
+
+*.hot.bed			minimally thresholded hotspots
+*.fdr0.01.hot.bed		FDR thresholded hotspots
+*.fdr0.01.pks.bed		FDR thresholded peaks
+*.fdr0.01.pks.dens.txt		smoothed tag density value at each peak
+*.fdr0.01.pks.zscore.txt	z-score for the hotspot containing each peak
+*.fdr0.01.pks.pval.txt		binomial p-value for the hotspot containing each peak
+
+
+The score in the 5th column of the hotspot files are the z-scores that
+come from the binomial model for scoring hotspots.
+
+The SPOT score will be in a file with extension spot.out in the output
+directory.
+
+
+Tag Pile-Up Artifacts (badspots and black-list regions)
+-------------------------------------------------------
+
+An optional step, accomplished by the script run_badspot, is provided
+to automatically detect regions of tag pile-ups that are artifacts of
+the sequencing process and not a measure of biological signal.  The
+regions are detected using a heuristic: the genome is binned into 50bp
+windows (stepping every 25bp), and any window which contains at least
+80% of the tags in a surrounding 250bp window is flagged as a
+"badspot."  Tags in badspots are removed as a pre-processing step
+before hotspot is called.  In addition to this dynamic detection of
+artifacts, run_badspot will also remove tags from a pre-defined set of
+"black-list" regions of the user's choosing, defined by the token
+variable _OMIT_REGIONS_, which can be left blank if desired.  We have
+found, for instance, that satellite repeat regions are a constant
+source of artifacts, and we consequently remove all tags overlapping
+satellites.
+
+At this point, it is not possible to omit tags from a set of
+black-list regions without doing the automatic badspot detection as
+well.  But if you do not want to do either, just leave out the
+run_badspot step from runhotspot.
+
+
+Dependencies
+------------
+
+The scripts in the pipeline-scripts directory depend on some
+non-standard, outside programs or suites, described below, which you
+will need to have in your path.  In addition, the script tokenizer
+(see ScriptTokenizer directory) requires Python 2.6+, and the FDR
+thresholding routines require R (I am not sure what the minimal
+version would be for that).
+
+1) The scripts make liberal use of the bedops suite of utility
+programs (created by UW informatics staff) for computing standard set
+operations, etc. on bed files, in addition to routines for efficiently
+compressing bed files.  The bedops package is available for download
+at
+
+    http://code.google.com/p/bedops/
+
+which contains precompiled binaries as well as source code and
+makefiles for building them yourself.  Individual programs used by the
+scripts include bedops, bedmap, and sort-bed, for sorting and
+operating on bed files, and starch and unstarch for bed file
+compression.  Version 2.0.0 or later is required.  We have heard
+reports of errors running hotspot if you do not use the 64-bit version
+of BEDOPS, but we have not verified that yet.
+
+2) The scripts use two routines, shuffleBed and bamToBed, from the
+bedTools package, available for download at
+
+    http://code.google.com/p/bedtools/
+
+3) The peak-finding script run_wavelet_peak_finding uses wavelets for
+smoothing tag densities before performing peak-finding. The script
+run_wavelet_peak_finding calls a more general bash script, wavePeaks,
+which can be found in the src directory, which in turn calls the
+wavelets program.  A precomputed linux binary version of the latter is
+provided in the bin directory (you still need to add this to your
+path).  If this binary does not work for you, you can download and
+build the wavelets program yourself, from
+
+    http://staff.washington.edu/dbp/WMTSA/NEPH/wavelets.html
+
+4) The auxiliary script enumerateUniquelyMappableSpace, in
+hotspot-deploy/bin, for generating uniquely mappable locations in the
+genome (variable _MAPPABLE_FILE_), uses the bowtie aligner (Langmead
+B, Trapnell C, Pop M, Salzberg SL. Ultrafast and memory-efficient
+alignment of short DNA sequences to the human genome. Genome Biology
+10:R25, http://bowtie-bio.sourceforge.net).  To use this script,
+bowtie and bowtie-build must be in your path.  Also, this invokes a
+Perl script, enumerateUniquelyMappableSpace.pl, which assumes
+/usr/bin/perl (change to /usr/bin/env perl?). For efficiency,
+enumerateUniquelyMappableSpace is set up to process all chromosomes in
+parallel by using a local compute cluster.  It makes calls to qsub,
+which submits batch jobs to the Sun Grid Engine queuing system.  If
+you do not have a cluster, or your cluster is not managed using Sun
+Grid Engine, you can easily "un-parallelize" the script by simply
+deleting or commenting out the two lines that start with "qsub," and
+the two lines that start with "EOF." (These instructions are in the
+header of the script itself.)
+
+5) The unix utility program bc is used to perform some calculations.

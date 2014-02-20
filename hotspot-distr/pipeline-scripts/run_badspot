@@ -1,0 +1,168 @@
+#! /bin/bash
+
+# Compute badspots and create filtered tags file.
+
+
+## Tags file can be in bam or bed.starch format.  If latter, however,
+## it cannot be in the location specified by _OUTDIR_, since in that
+## case the filtered tags output and the input tags would have the
+## same name.
+tags=_TAGS_
+
+# Use the following if there are any other regions (such as satellite
+# repeats, blacklist regions, etc.) from which you would like to
+# automatically filter reads. Bed file (uncompressed, or starched).
+# Can also be left blank.
+omit=_OMIT_REGIONS_
+
+chroms=_CHROM_FILE_
+# Filtered tags will go here
+outdir=_OUTDIR_
+check=_CHECK_
+chkchr=_CHKCHR_
+
+mintags=5
+thresh=.80
+step=50
+wins="50 250"
+offs="0 25"
+
+Offs=(${offs[*]})
+Wins=(${wins[*]})
+winsm=${Wins[0]}
+winlg=${Wins[1]}
+padsm=`echo $winsm/2 | bc`
+padlg=`echo $winlg/2 | bc`
+
+
+pid=$$
+tmpd=/tmp/tmp$pid
+
+thisd=`pwd`
+thisscr=run_badspot
+echo
+echo $thisscr
+
+# Check tags for proper naming.
+test=$(echo $tags | grep "\.bam$")
+if [ ${#test} != 0 ]; then
+    bam=T
+else
+    test=$(echo $tags | grep "\.bed\.starch$")
+    if [ ${#test} != 0 ]; then
+	bam=F
+    else
+	echo "$thisscr: $tags must end in .bam or .bed.starch"
+	exit
+    fi
+fi
+
+mkdir -p $outdir
+
+proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
+out=$outdir/$proj.bed.starch
+bad=$outdir/$proj.badspot.min${mintags}.thresh${thresh}.bed
+
+if [ -e $out ] && [ $tags == $out ]; then
+    echo "$thisscr: input tags file $tags same as filtered tags destination"
+    exit
+fi
+
+if [ $check == "T" ] && [ -s $bad ]; then 
+    echo "$thisscr: $bad already computed; skipping"
+else
+    ##
+    ## Compute counts of tags in sliding windows.
+    ## 
+    for off in $offs
+    do
+	ctsm=$tmpd/$proj.win${winsm}-step${step}.off${off}.bed
+	ctlg=$tmpd/$proj.win${winlg}-step${step}.off${off}.bed
+	tmptsm=$ctsm.tile
+	tmptlg=$ctlg.tile
+	badt=$tmpd/$proj.badspot.min${mintags}.thresh${thresh}.off$off.bed
+	mkdir -p $tmpd
+	## Small window
+	echo "$thisscr: generating tile, small window..."
+	awk -v step=$step -v pad=$padsm -v off=$off \
+	    '{ for(i = $2+off; i <= $3; i += step) {left=i-pad; if(left<0) left=0; right=i+pad; if(right>$3) right=$3; print $1"\t"left"\t"right }}' $chroms \
+            > $tmptsm
+	echo "$thisscr: bedmap & awk, small window..."
+	if [ $bam == "T" ]; then
+            bamToBed -i $tags \
+		| awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
+     		| sort-bed - \
+		| bedmap --delim "\t" --bp-ovr 1 --echo --count $tmptsm - \
+		> $ctsm
+	else
+	    unstarch $tags \
+       		| awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
+		| sort-bed - \
+		| bedmap --delim "\t" --bp-ovr 1 --echo --count $tmptsm - \
+		> $ctsm
+	fi
+	rm $tmptsm
+
+	## Large window
+	echo "$thisscr: generating tile, small window..."
+	awk -v step=$step -v pad=$padlg -v off=$off \
+	    '{ for(i = $2+off; i <= $3; i += step) {left=i-pad; if(left<0) left=0; right=i+pad; if(right>$3) right=$3; print $1"\t"left"\t"right }}' $chroms \
+            > $tmptlg
+	echo "$thisscr: bedmap & awk, large window..."
+	if [ $bam == "T" ]; then
+            bamToBed -i $tags \
+		| awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
+     		| sort-bed - \
+		| bedmap --delim "\t" --bp-ovr 1 --count $tmptlg - \
+     		| paste $ctsm - \
+		| awk -v m=$mintags -v t=$thresh '($4 >= m && $4/$5 >= t)' - \
+		> $badt
+	else
+	    unstarch $tags \
+       		| awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
+		| sort-bed - \
+		| bedmap --delim "\t" --bp-ovr 1 --count $tmptlg - \
+     		| paste $ctsm - \
+		| awk -v m=$mintags -v t=$thresh '($4 >= m && $4/$5 >= t)' - \
+		> $badt
+	fi
+	rm $tmptlg $ctsm
+    done
+
+    ## Merge step
+    out1=$tmpd/$proj.badspot.min${mintags}.thresh${thresh}.off${Offs[0]}.bed
+    out2=$tmpd/$proj.badspot.min${mintags}.thresh${thresh}.off${Offs[1]}.bed
+    bedops -m $out1 $out2 > $bad
+    rm $out1 $out2
+fi
+
+##
+## Filter and output
+##
+
+skip=F
+if [ $check == "T" ] && [ -s $out ]; then 
+    test=`unstarch $chkchr $out | head -1`
+    if [ ${#test} != 0 ]; then 
+	echo "$thisscr: $out already exists; skipping"
+	skip=T
+    fi
+fi
+
+if [ $skip == "F" ]; then
+    if [ $bam == "T" ]; then
+	bamToBed -i $tags \
+       	    | awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
+            | sort-bed - \
+            | bedops -n -1 - $bad $omit \
+            | starch - \
+            > $out
+    else
+	unstarch $tags \
+       	    | awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
+            | sort-bed - \
+            | bedops -n -1 - $bad $omit \
+            | starch - \
+            > $out
+    fi
+fi

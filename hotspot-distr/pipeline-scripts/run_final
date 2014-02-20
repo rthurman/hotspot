@@ -1,0 +1,121 @@
+#! /bin/bash
+
+#
+# Collect final output files into a single location, and optionally
+# delete intermediate files and directories created during entire
+# hotspot process.
+#
+# For final output, merge overlapping peaks and map z-scores,
+# densities and p-values to them.
+#
+
+tags=_TAGS_
+fdrs=_FDRS_
+outdir=_OUTDIR_
+thresh=_THRESH_
+mrgDist=_MERGE_DIST_
+minSize=_MINSIZE_
+clean=_CLEAN_
+randir=_RANDIR_
+gnom=_GENOME_
+dupok=_DUPOK_
+
+thisscr="run_final"
+echo
+echo $thisscr
+
+proj=`basename $tags | sed s/.bam$// | sed s/.bed.starch$//`
+indir=$outdir/$proj-both-passes
+inpv=$indir/$proj.hotspot.twopass.pval.txt
+inuh=$indir/$proj.hotspot.twopass.zscore.wig
+inuhm=$indir/$proj.twopass.merge${mrgDist}.wgt${minSize}.zgt${thresh}.wig
+inuhmpv=$indir/$proj.twopass.merge${mrgDist}.wgt${minSize}.zgt${thresh}.pval.txt
+
+if [ ! -s $inpv ] || [ ! -s $inuh ] || [ ! -s $inuhm ] || [ ! -s $inuhmpv ]; then
+    echo "$thisscr: one of the following files is missing; skipping final directory creation and clean."
+    echo $inpv
+    echo $inuh
+    echo $inuhm
+    echo $inuhmpv
+    exit
+fi
+
+outd=$proj-final
+mkdir -p $outd
+outuh=$outd/${proj}.hot.bed
+outuhp=$outd/${proj}.hot.pval.txt
+
+cp $inuhmpv $outuhp
+awk 'NR>1{print $1"\t"$2"\t"$3"\t.\t"$4}' $inuhm \
+    > $outuh
+
+rmpksdir=T
+
+for fdr in $fdrs
+do
+    echo "fdr $fdr"
+    if [ $fdr == "N" ]; then
+	inp=$indir/$proj.twopass.merge150.wgt10.zgt2.pks.bed
+	outpid=pks
+	outh=$outuh
+    else
+	inp=$indir/$proj.hotspot.twopass.fdr$fdr.merge.pks.bed
+	outpid=fdr$fdr.pks
+	inh=$indir/$proj.hotspot.twopass.fdr$fdr.merge.wig
+	if [ ! -s $inh ]; then
+	    echo "$thisscr: $inh is missing; skipping final output."
+	    continue
+	fi
+	outh=$outd/${proj}.fdr$fdr.hot.bed
+	awk 'NR>1{print $1"\t"$2"\t"$3"\t.\t"$4}' $inh \
+	    > $outh
+    fi
+    if [ -s $inp ]; then
+	outb=$outd/${proj}.$outpid.bed
+	outz=$outd/${proj}.$outpid.zscore.txt
+	outpv=$outd/${proj}.$outpid.pval.txt
+	outdns=$outd/${proj}.$outpid.dens.txt
+	bedops -m $inp \
+	    > $outb
+	bedmap --max $outb $outh \
+	    > $outz
+	bedmap --max $outb $inp \
+	    > $outdns
+	awk 'NR>1' $inuh \
+	    | paste - $inpv \
+	    | bedmap --min --sci $outb - \
+	    > $outpv
+    else
+	rmpksdir=F
+    fi
+done
+
+## Clean up
+if [ $clean == "T" ]; then
+    if [ $dupok == "T" ]; then
+	libs=$outdir/$proj.lib.filter.txt
+    else
+	libs=$outdir/$proj.lib.filter.nodup.txt
+    fi
+    ntag=$(cat $libs.counts)
+    ntagr=$((($ntag+50000)/100000))00000
+    libs="$libs ${ntagr}-ran.${gnom}.bed.starch"
+    if [ $dupok == "T" ]; then
+	libs="$libs $randir/${ntagr}-ran.${gnom}.lib.filter.txt"
+    else
+	libs="$libs $randir/${ntagr}-ran.${gnom}.lib.filter.nodup.txt"
+    fi
+    rm -f $libs
+    drs="$outdir/$proj $randir/$ntagr-ran"
+    for dir in $drs
+    do
+	pass1dir=$dir-pass1
+	pass2dir=$dir-pass2
+	bothpdir=$dir-both-passes
+	rm -rf $pass1dir $pass2dir $bothpdir
+    done
+    if [ $rmpksdir == "T" ]; then
+	rm -rf $outdir/$proj-peaks
+    fi
+fi
+

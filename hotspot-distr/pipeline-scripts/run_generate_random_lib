@@ -1,0 +1,120 @@
+#! /bin/bash
+
+## Generate random datasets of same size as input datasets (rounding to nearest 100,000 tags).
+## Uses bedTools routine shuffleBed.
+chrfile=_CHROM_FILE_
+K=_K_
+gnom=_GENOME_
+umap=_MAPPABLE_FILE_
+outdir=_OUTDIR_
+umap10kb=$outdir/$(basename $umap).counts.10kb
+randir=_RANDIR_
+seed=_SEED_
+dupok=_DUPOK_
+
+# List of tags files.  Bam format, extension .bam
+tags=_TAGS_
+
+offset=0  # For the uniform densities, all bases are represented
+
+pid=$$
+
+thisscr="run_generate_random_lib"
+echo
+echo $thisscr
+
+## Get tag counts.
+proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
+if [ $dupok == "T" ]; then
+    lib=$outdir/$proj.lib.filter.txt
+else
+    lib=$outdir/$proj.lib.filter.nodup.txt
+fi
+if [ -e $lib.counts ]; then
+    ntag=`cat $lib.counts`
+else
+    ntag=`wc -l $lib | cut -f1 -d" "`
+    echo $ntag > $lib.counts
+fi
+ntag=`echo "($ntag+50000)/100000" | bc`00000
+
+out=$randir/${ntag}-ran.${gnom}.bed.starch
+if [ -s $out ]; then
+    echo "$thisscr: $out exists; skipping"
+    exit 0
+fi
+
+## We need to generate the random file.
+if [ ! -e $umap10kb ]; then
+    echo "$thisscr: error: $umap10kb does not exist; needs to be generated (using run_10kb_counts)" 1>&2
+    exit 1
+fi
+
+chroms=$(cut -f1 $chrfile)
+
+i=0
+totalbp=0
+for chr in $chroms
+do
+    size[$i]=$(grep -w $chr $umap10kb | awk '{t+=$3}END{print t}')
+    ((totalbp+=size[i]))
+    ((i++))
+done
+echo "$thisscr: total mappable = $totalbp"
+
+echo $ntag
+tmpdir=$randir/${ntag}-ran
+mkdir -p $tmpdir
+
+## Generate random tags for each chromosome.
+tmpgnom=$tmpdir/$gnom.chr.lengths.$pid.tmp.txt
+cut -f1,3 $chrfile > $tmpgnom
+unmpbl=$tmpdir/K$K.$gnom.$pid.unmappable.tmp.bed
+bedops -d $chrfile $umap > $unmpbl
+
+tmp=$tmpdir/${ntag}-ran.$pid.tmp.bed
+
+list=""
+i=0
+for chr in $chroms
+do
+    tout=$tmpdir/${ntag}-ran.$chr.$gnom.bed.starch
+    list="$list $tout"
+    ## Compute the proportional sample size for this chromosome, out of the 
+    ## total sample size
+    chrsampsize=$(echo ${ntag}*${size[$i]}/${totalbp} | bc)
+    echo "$thisscr: $chr sample size = $chrsampsize"
+    ## Note: for shuffleBed use "-excl $unmpbl" instead of "-incl
+    ## $umap", since latter will generate approximately the same
+    ## number of random tags for each interval of $umap, even
+    ## though the sizes of those intervals are highly variable.
+    echo "$chr $chrsampsize" | awk '{while(i<$2){print $1"\t0\t1"; i++}}' > $tmp
+    shuffleBed -chrom -i $tmp -excl $unmpbl -g $tmpgnom -seed $seed \
+	| sort-bed - \
+	| starch - \
+	> $tout
+    ((seed++))
+    ((i++))
+done
+
+starchcat $list > $out
+
+## Clean up this step
+rm -r $tmpdir
+
+## Generate lib file.
+if [ $dupok == "T" ]; then
+    outl=$randir/${ntag}-ran.${gnom}.lib.filter.txt
+    if [ -s $outl ]; then
+	echo "$thisscr: $outl exists; skipping"
+    else
+	unstarch $out | awk '{print $1, $2}' - > $outl
+    fi
+else
+    outl=$randir/${ntag}-ran.${gnom}.lib.filter.nodup.txt
+    if [ -s $outl ]; then
+	echo "$thisscr: $outl exists; skipping"
+    else
+	unstarch $out | awk '{print $1, $2}' - | uniq - > $outl
+    fi
+fi

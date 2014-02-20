@@ -1,0 +1,128 @@
+#! /bin/bash
+# Work with jarched densities (needs appropriate binary _BINDIR_RAPPH_).
+
+gnom=_GENOME_
+
+# Tags file in bam format (file extension .bam), or starched bed file
+# (file extension .bed.starch).  If the latter, file should be in the
+# location specified by_OUTDIR_.  If the former, the bed.starch file
+# will be genereated, and put in _OUTDIR_.
+tags=_TAGS_
+
+# Location of genome-wide peaks
+outdir=_OUTDIR_
+
+# Location of hotspot results
+hotdir=_OUTDIR_
+
+# Tag density, 150bp window, sliding every 20bp.  Assumed to be
+# starched bed file, extension bed.starch.  Can also be a directory,
+# in which case the density file name will be assumed to be the name
+# of the tags file, minus the bam or bed.starch extension, with the
+# added extension tagdensity.bed.starch.
+dens=_DENS_
+
+check=_CHECK_
+chkchr=_CHKCHR_
+
+fdrs=_FDRS_
+K=_K_
+
+densitySize=20
+halfHSS=75
+fullHSS=$((2 * $halfHSS))
+
+thisscr="run_add_peaks_per_hotspot"
+echo
+echo $thisscr
+
+proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
+pdir=$outdir/$proj-peaks
+
+## If density is a directory, create expected file name
+if [ ${#dens} == 0 ]; then
+    dens=$pdir/$proj.tagdensity.bed.starch
+elif [ -d $dens ]; then
+    dens=$dens/$proj.tagdensity.bed.starch
+fi
+
+dentype=${dens##*.}
+
+if [ $dentype == "starch" ]; then
+    uncompr=unstarch
+elif [ $dentype == "jarch" ]; then
+    uncompr=gchr
+else
+    uncompr="cat"
+fi
+
+## Check genome-wide output.
+pk=$pdir/$proj.peaks.bed
+if [ ! -e $pk ]; then
+    echo "$thisscr: $pk does not exist; Check results. Skipping"
+    ((i++))
+    exit 1
+fi
+test=`grep $chkchr $pk | head -1`
+if [ $check == "T" ] && [ ${#test} == 0 ]; then 
+    echo "$thisscr: $pk does not contain data for $chkchr; Problem? Skipping."
+    ((i++))
+    exit 1
+fi
+
+outd=$hotdir/$proj-both-passes
+for fdr in $fdrs
+do
+    if [ $fdr == "N" ]; then
+	wig=$outd/$proj.twopass.merge150.wgt10.zgt2.wig
+	combbed=$outd/$proj.twopass.merge150.wgt10.zgt2.pks.bed
+	name=$proj.pks
+    else
+	wig=$outd/$proj.hotspot.twopass.fdr$fdr.merge.wig
+	combbed=$outd/$proj.hotspot.twopass.fdr$fdr.merge.pks.bed
+	name=$proj.pks.fdr$fdr
+    fi
+    combwig=`echo $combbed | sed s/bed$/wig/`
+    echo $combwig
+
+    if [ ! -e $wig ]; then
+	echo "$thisscr: $wig does not exist; Check results. Skipping"
+	continue
+    fi
+    test=`grep $chkchr $wig | head -1`
+    if [ $check == "T" ] && [ ${#test} == 0 ]; then 
+	echo "$thisscr: $wig does not contain data for $chkchr; Problem? Skipping."
+	((i++))
+	continue
+    fi
+    tout=$outd/$proj.hotspot.twopass.fdr$fdr.merge.pks.tmp.bed
+    tmpdom=$outd/$proj.hotspot.twopass.fdr$fdr.merge.nopkhot.tmp.bed
+    bedops --header -e -1 $pk $wig > $tout
+    bedops --header -n -1 $wig $pk > $tmpdom
+
+
+    ## If the original peakset intersects every element of the domain,
+    ## we're done.
+    if [ -z $tmpdom ]; then
+	echo "all hotspots have peaks"
+	cp $tout $combbed
+    else
+        ## Otherwise add in one peak per domain element not covered; namely
+        ## the point of maximum score in the element.
+	if [ ! -e $dens ] || [ -z $dens ]; then
+	    echo "$thisscr: error: $dens does not exist; run run_wavelet_peak_finding to generate."
+	    exit 1
+	fi
+	$uncompr $dens \
+	    | bedmap --delim ";" --echo-map --max $tmpdom - \
+	    | awk 'BEGIN{FS=";"}{max=$NF; i=1; go=1; while(i<NF && go==1){split($i, a, "\t"); if(a[5] == max){print $i; go=0}; i++}}' \
+	    | awk -v sz=$halfHSS 'BEGIN {FS="\t";OFS=FS} {d=int(($2+$3)/2); e=d-sz; if ( e < 0 ) { e = 0; } print $1, e, d+sz, $4, int($5)}' \
+	    | sort-bed - \
+	    | bedops -u - $tout \
+	    > $combbed
+    fi
+
+    echo "track name=$name" > $combwig
+    cut -f1-3 $combbed >> $combwig
+    rm $tout $tmpdom
+done

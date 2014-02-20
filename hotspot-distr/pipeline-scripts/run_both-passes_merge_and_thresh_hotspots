@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# Merge and threshold hotspots from pass 2.
+
+tags=_TAGS_
+
+thresh=_THRESH_
+mrgDist=_MERGE_DIST_
+pad=$((mrgDist/2))
+minSize=_MINSIZE_
+check=_CHECK_
+chkchr=_CHKCHR_
+
+# Output location; full path
+outdir=_OUTDIR_
+
+pid=$$
+thisd=`pwd`
+thisscr="run_both_passes_merge_and_thresh_hotspots"
+echo
+echo $thisscr
+
+proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
+dir=$outdir/${proj}-both-passes
+echo $dir
+cd $dir
+
+in=*.hotspot.twopass.zscore.wig
+if [ ! -e $in ]; then
+    echo "$thisscr: $in does not exist; Check results. Skipping"
+    cd $thisd
+    exit 1
+fi
+test=`grep $chkchr $in | head -1`
+if [ $check == "T" ] && [ ${#test} == 0 ]; then 
+    echo "$thisscr: $in does not contain data for $chkchr; Problem? Skipping."
+    cd $thisd
+    exit 1
+fi
+
+out=`echo $in | sed s/hotspot\.twopass\.zscore\.wig$/twopass.merge${mrgDist}.wgt${minSize}.zgt${thresh}.wig/`
+outp=`echo $out | sed s/wig$/pval.txt/`
+inp=*.hotspot.twopass.pval.txt
+
+echo $out
+awk -v thresh=$thresh -v minsize=$minSize '(NR > 1 && $4 >= thresh && ($3-$2)>=minsize)' $in \
+    | bedops --range $pad -m - \
+    | bedops --range -$pad -m - \
+    > tmp.bed
+
+echo "track type=wiggle_0 visibility=dense name=${proj}_2pass_merge_${mrgDist}_zgt$thresh" > $out
+
+awk '(NR>1){print $1"\t"$2"\t"$3"\tI\t"$4}' $in \
+    | bedmap --delim "\t" --echo --max tmp.bed - \
+    >> $out
+
+awk '(NR>1)' $in \
+    | paste - $inp \
+    | bedmap --sci --min tmp.bed - \
+    > $outp
+
+rm tmp.bed
+cd $thisd

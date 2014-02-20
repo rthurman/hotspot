@@ -1,0 +1,186 @@
+#! /bin/bash
+
+## Re-score first and second-pass hotspots using the same background.
+thisd=`pwd`
+thisscr="run_rescore_hotspot_passes"
+echo
+echo $thisscr
+
+gnom=_GENOME_
+
+tags=_TAGS_
+useinput=_USE_INPUT_
+tagsInput=_INPUT_TAGS_
+
+thresh=_THRESH_
+minSize=_MINSIZE_
+
+check=_CHECK_
+chkchr=_CHKCHR_
+
+# Output location; full path
+outdir=_OUTDIR_
+# Location of random hotspots; full path
+randir=_RANDIR_
+
+umap=_MAPPABLE_FILE_
+umap10kb=$outdir/`basename $umap`.counts.10kb
+
+# Hotspot window parameters
+backgrdWin=_BACKGRD_WIN_
+backgrdWinHalf=$((backgrdWin/2))
+
+# FDR levels.  If "N", don't do random data.
+fdrs=_FDRS_
+
+proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
+drs="$outdir/$proj"
+ntag=`cut -d" " -f2 $outdir/$proj-pass1/*.stdout`
+ntagr=$((($ntag+50000)/100000))00000
+if [ "$fdrs" != "N" ]; then
+    drs="$drs $randir/$ntagr-ran"
+fi
+
+if [ ! -e $umap10kb ]; then
+    echo "$thisscr: error: $umap10kb does not exist; needs to be generated (using run_10kb_counts)" 1>&2
+    exit 1
+fi
+
+mpblgenome=`awk '{t+=$3}END{print t}' $umap10kb`
+
+for dir in $drs
+do
+    proj=`basename $dir`
+    outd=${dir}-both-passes
+    mkdir -p $outd
+    cd $outd
+    echo "$thisscr: processing $outd"
+
+    pass1dir=$dir-pass1
+    pass2dir=$dir-pass2
+    pass1hot=$pass1dir/$proj.hotspot.out
+    pass2hot=$pass2dir/$proj.pass2.hotspot.out
+    libbed=$pass2dir/$proj.pad.nohotspot.lib.bed
+    bckmappable=$pass2dir/$proj.pad.nohotspot.bed
+    wign=$proj.hotspot.twopass.zscore
+    zwig=$wign.wig
+    outp=$proj.hotspot.twopass.pval.txt
+
+    if [ ! -e $pass2hot ]; then
+	echo "$thisscr: $pass2hot does not exist; Check results. Skipping"
+	cd $thisd
+	continue
+    fi
+    test=`cut -f1 $pass2hot | grep $chkchr - | head -1`
+    if [ $check == "T" ] && [ ${#test} == 0 ]; then 
+	echo "$thisscr: $pass2hot does not contain data for $chkchr; Problem? Skipping."
+	cd $thisd
+	continue
+    fi
+    
+    if [ -e $zwig ]; then
+	test=`grep $chkchr $zwig | head -1`
+	if [ $check == "T" ] && [ ${#test} != 0 ]; then 
+	    echo "$thisscr: $zwig already computed; skipping"
+	    cd $thisd
+	    continue
+	fi
+    fi
+
+    ## Get hotspot cluster counts for each hotspot from both passes.
+    cat $pass1hot $pass2hot \
+      	| awk -v minSize=$minSize -v thresh=$thresh \
+      	'NR>1 {if(($7 - $6 + 1) >= minSize && $8 > thresh) {pad=int(.5+$5/2); left=$2-pad; if(left < 0) left=0; print $1"\t"left"\t"$2+pad"\tid-"NR"\t"$3"\t"$6"\t"$7+1} else {next}}' - \
+      	| sort-bed - \
+      	| grep -vi inf \
+      	| grep -vi nan \
+        > tmp.bed
+    if [ $useinput == "T" ] && [ $dir != "$randir/$ntagr-ran" ]; then
+	projInput=`basename $tagsInput | sed s/\.bam$// | sed s/\.bed.starch$//`
+	tagsInputB=$outdir/$projInput.bed.starch
+	if [ ! -e $tagsInputB ]; then
+	    echo "$thisscr: input tags bed file $tagsInputB does not exist; run run_make_lib to generate..."
+	    exit 1
+	fi
+	echo "$thisscr: subtracting input tags..."
+	ntagsInput=$(unstarch --elements $tagsInputB)
+	scalef=`echo "scale=5; $ntag/$ntagsInput" | bc`
+	bedmap --delim "\t" --echo --count tmp.bed $tagsInputB \
+	    | awk -v s=$scalef '{n=int($5 - $8*s); if(n<0) n=0; print $1"\t"$2"\t"$3"\t"$4"\t"n}' - \
+	    > hotspot.both.passes.cluster.counts.bed
+    else
+        cut -f1-5 tmp.bed \
+      	    > hotspot.both.passes.cluster.counts.bed
+    fi
+    cut -f6-7 tmp.bed > hotspot.start.stop.txt
+    ## Left and right flank files.
+    awk -v pad=$backgrdWinHalf '{left=$2-pad; if(left < 0) left = 0; print $1"\t"left"\t"$2}' hotspot.both.passes.cluster.counts.bed > left.flank.bed
+    awk -v pad=$backgrdWinHalf '{print $1"\t"$3"\t"$3+pad}' hotspot.both.passes.cluster.counts.bed > right.flank.bed
+    ## Counts of background tags in each flanking region. Note: in
+    ## contrast with the hotspot tag counts, we do not adjust the
+    ## flanking region tags if there is input.  This makes our
+    ## z-scores conservative.  Also, in a scenario where signal and
+    ## input tags are very similar across a hotspot *and* flanking
+    ## regions, subtracting input across the hotspot and flanking
+    ## regions would result in an inappropriately high hotspot z-score
+    ## if the signal tags are just very slightly enriched over input.
+    bedmap --count left.flank.bed $libbed \
+      	> left.flank.bgtags.txt
+    bedmap --count right.flank.bed $libbed \
+      	> right.flank.bgtags.txt
+    ## Number of *background* mappable bases in each flanking region
+    bedmap --bases left.flank.bed $bckmappable \
+      	> left.flank.mappable.txt
+    bedmap --bases right.flank.bed $bckmappable \
+      	> right.flank.mappable.txt
+    ## Number of mappable bases in the hotspots. Here we do not want to restrict to background bases, since they may not be
+    ## part of the hotspots we are trying to score.  
+    bedmap --bases hotspot.both.passes.cluster.counts.bed $umap \
+      	> hotspot.mappable.txt
+    ## Now we are ready to compute z-scores.
+    paste hotspot.both.passes.cluster.counts.bed left.flank.bgtags.txt right.flank.bgtags.txt left.flank.mappable.txt right.flank.mappable.txt hotspot.mappable.txt hotspot.start.stop.txt \
+      	| awk -v ntags=$ntag -v mpblg=$mpblgenome\
+      	'{mpblLg=$8+$9+$10; if(mpblLg==0) p=0; else p=$10/mpblLg; cntsLg=$5+$6+$7;  mu=cntsLg*p; sd=(cntsLg*p*(1-p))^.5; if(sd == 0) z="NA"; else z=($5-mu)/sd; pgw=$10/mpblg; mugw=ntags*pgw; sdgw=(ntags*pgw*(1-pgw))^.5; if(sdgw==0) zgw="NA"; else zgw=($5-mugw)/sdgw; if(z!="NA" && zgw!="NA") {outz=zgw; if(z < zgw) outz=z; print $1"\t"$11"\t"$12"\tID\t"outz"\t"p"\t"pgw"\t"cntsLg"\t"$5}}' - \
+	| tee tmp.all \
+	| cut -f1-5 - \
+      	> tmp.bed
+    bedops -m tmp.bed \
+      	> tmp.merge.bed
+    echo "track type=wiggle_0 visibility=full name=$wign" > $zwig
+    bedmap --max tmp.merge.bed tmp.bed \
+      	| paste tmp.merge.bed - \
+      	>> $zwig
+    ## Ready to compute p-values.
+    cut -f6-9 tmp.all > tmp.binom
+    Rcmd="cntsGW <- $ntag"
+    Rcmd="$Rcmd; table <- read.table(\"tmp.binom\", as.is = T, col.names = c('p', 'pgw', 'cntsLg', 'cntsSm'))"
+    Rcmd="$Rcmd; pval <- pbinom(table\$cntsSm - 1, size = table\$cntsLg, p = table\$p, lower.tail = F)"
+    Rcmd="$Rcmd; pvalGW <- pbinom(table\$cntsSm - 1, size = cntsGW, p = table\$pgw, lower.tail = F)"
+    Rcmd="$Rcmd; write(pmax(pval, pvalGW), file = \"tmp.p\", sep = '\n')"
+    echo "Rcmd = $Rcmd"
+    echo "$Rcmd" | R --no-save --quiet
+
+    cut -f1-4 tmp.bed \
+        | paste - tmp.p \
+        > tmp.all.bed
+    bedmap --sci --min tmp.merge.bed tmp.all.bed \
+        > $outp
+
+    rm left.flank.bed right.flank.bed left.flank.mappable.txt right.flank.mappable.txt left.flank.bgtags.txt right.flank.bgtags.txt \
+        hotspot.mappable.txt tmp.bed tmp.merge.bed hotspot.both.passes.cluster.counts.bed hotspot.start.stop.txt tmp.all tmp.all.bed tmp.p tmp.binom
+    ## Clean up pass2, but only if the above was successful.
+    if [ -e $zwig ]; then
+  	test=$(grep $chkchr $zwig | head -1)
+  	if [ ${#test} == 0 ]; then 
+  	    echo "$zwig missing $chkchr data; problem?"
+        else
+            rm $libbed $bckmappable
+  	fi
+    fi
+
+    cd $thisd
+done
+
+# Clean up; this is the last script to require the 10kb uniquely mappable counts.
+rm $umap10kb
+

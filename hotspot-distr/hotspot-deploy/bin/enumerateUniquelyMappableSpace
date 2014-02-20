@@ -1,0 +1,57 @@
+#!/bin/bash
+
+##
+## NOTE: for efficiency, this script is set up to process all
+## chromosomes in parallel by using a local compute cluster.  It uses
+## calls to qsub, which submits batch jobs to the Sun Grid Engine
+## queuing system.  If you do not have a cluster, or your cluster is
+## not managed using Sun Grid Engine, you can easily "un-parallelize"
+## the script by simply deleting or commenting out the two lines that
+## start with "qsub," and the two lines that start with "EOF."
+##
+args=("$@")
+
+usage="enumerateUniquelyMappableSpace <genome> <read_length>\n
+Example: enumerateUniquelyMappableSpace ce10 50"
+
+if [ $# != 2 ]; then
+    echo -e $usage
+    exit
+fi
+
+genome=${args[0]}
+read_length=${args[1]}
+
+if ! [ -f "chromFa.tar.gz" ] ; then
+    # Download chromosome fasta files from UCSC
+    wget http://hgdownload.soe.ucsc.edu/goldenPath/$genome/bigZips/chromFa.tar.gz
+    tar xvzf chromFa.tar.gz
+fi
+
+if ! [ -f "$genome.1.ebwt" ] ; then
+    # Make bowtie(1) index
+    # First put fa file names in comma-separated list.
+    chromosomeFiles=`ls chr*.fa | awk 'BEGIN{all=""; count=0}{if(count > 0) all=all","$1; else all=$1; count++}END{print all}'`
+    echo "Indexing $chromosomeFiles"
+    bowtie-build $chromosomeFiles $genome
+fi
+
+wait_list="not_a_job_name"
+result_list=""
+for chromosome in `ls chr*.fa | cut -f1 -d . | sort` ; do
+    job_name=".map$chromosome.$genome.$read_length"
+    wait_list="$wait_list,$job_name" 
+    chromosome_result=$chromosome.$genome.K$read_length.mappable_only.bed
+    result_list="$result_list $chromosome_result"
+    if ! [ -s "$chromosome_result" ] ; then
+        qsub -V -S /bin/bash -cwd -o `pwd` -N $job_name -pe threads 3 <<EOF
+            enumerateUniquelyMappableSpace.pl $read_length $genome $chromosome.fa | bedops -m - > $chromosome_result
+EOF
+    fi
+done
+
+# bedops puts chromosomes in the expected lexicographical order, otherwise same as "cat"
+qsub -V -S /bin/bash -cwd -o `pwd` -N ".mergemap$genome.$read_length" -hold_jid $wait_list <<EOFmerge
+    bedops --ec -u $result_list > $genome.K$read_length.mappable_only.bed
+EOFmerge
+

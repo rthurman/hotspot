@@ -1,0 +1,127 @@
+#! /bin/bash
+
+##
+## Perform wavelet smoothing of the input file and return all local
+## maxima of the result.  Wavelet smoothing is accomplished using the
+## MODWT (maximal overlap discrete wavelet transform) as implemented
+## by the wavelets program, which must be in your path.  The wavelets
+## program, developed by Shane Neph at the University of Washington,
+## is available for download at Prof. Don Percival's website,
+##
+## http://faculty.washington.edu/dbp/WMTSA/NEPH/wavelets.html
+## 
+## This program has not yet been published, so we ask that you do not
+## publish data or results using wavelets without permission.  We will
+## give you appropriate citation at that time.
+##
+## See usage statement, below.
+
+usage="\n
+wavePeaks <signal_file> <level> <chromosome_file> <peaks_flag>\n
+\n
+Find peaks in signal after wavelet smoothing.\n
+\n
+<signal_file> is a 5-column bed file (signal in column 5), optionally compressed in starch or\n
+\tjarch format (file extension .starch or .jarch). Required.\n
+\n
+<level> level of smoothing; by default 3. If the resolution of the input file is x, then the results are \n
+\tsmoothed out to a scale of (2^lvl)*x. Use level=0 to bypass wavelet smoothing.\n
+\n
+<chromosome_file> contains chromosomes to be processed, in first column;\n
+\tYou may omit this argument or instead specify \"all\" (the default) to use all chromosomes in the\n
+\tsignal file. (Note: if <signal-file> is in jarch format, it is recommended you provide a file rather\n
+\tthan specify \"all\".)
+\n
+<peaks_flag> \"p\" (default), or \"v\"; call peaks (local maxima) or valleys (local minima), respectively.\n
+\n
+If only two arguments are present, they are interpreted as <signal_file> <level>.
+\n
+Output is a 5-column bed file of peak locations from <signal_file>, written to stdout."
+
+
+if [ $# -gt 4 ] || [ $# == 0 ]; then
+    echo -e $usage
+    exit
+fi
+
+den=$1
+dentype=${den##*.}
+
+if [ $dentype == "starch" ]; then
+    uncompr=unstarch
+elif [ $dentype == "jarch" ]; then
+    uncompr=gchr
+else
+    uncompr="grep -w"
+fi
+
+tmpd=/tmp/tmp$$
+
+## Default values.
+# filter=LA8
+filter=Haar
+halfsite=75
+lvl=3
+pks=p
+
+if [ $# -ge 2 ]; then
+    lvl=$2
+fi
+
+if [ $# -le 2 ] || [ $3 == "all" ]; then
+    if [ $uncompr == "starch" ]; then
+	chrs=$(unstarch --list-chromosomes $den)
+    else
+	chrs=$($uncompr $den | cut -f1 - | uniq)
+    fi
+else
+    chrs=$(cut -f1 $3)
+fi
+
+if [ $# -eq 4 ]; then
+    pks=$4
+fi
+
+pid=$$
+
+mkdir -p $tmpd
+outpl=""
+for chr in $chrs
+do
+    echo $chr 1>&2
+    tmppks=$tmpd/tmp.`basename $den`.$chr.J$lvl.$pid.pks.bed
+    outpl="$outpl $tmppks"
+    tmppipe=`echo $tmppks | sed s/pks.bed$/pipe/`
+    mkfifo $tmppipe
+    if [ $lvl -gt 0 ]; then
+        ## Wavelet smooth
+        ## Get scores to smooth from 5th column of bed file
+	tmptxt=`echo $tmppks | sed s/pks.bed$/txt/`
+	tmpsmth=`echo $tmptxt | sed s/txt$/smooth.txt/`
+	$uncompr $chr $den \
+            | cut -f5 - > $tmptxt
+	wavelets --level $lvl --to-stdout --boundary reflected --filter $filter $tmptxt > $tmpsmth
+	$uncompr $chr $den \
+	    | paste - $tmpsmth \
+	    | cut -f1-4,6 \
+	    > $tmppipe &
+    else
+	$uncompr $chr $den > $tmppipe &
+    fi
+    ## reconstruct bed file with smoothed scores and extract local maxima.
+    if [ $pks == "p" ]; then
+	awk 'BEGIN{first=1; incr=0}{if(first == 1) {first=0} else{if(incr == 1){if($5-lastv < 0){print lastl; incr=0}} else{if($5-lastv > 0) incr=1}}; lastv=$5; lastl=$0}' - < $tmppipe \
+	    > $tmppks
+    else
+	awk 'BEGIN{first=1; incr=0}{if(first == 1) {first=0} else{if(incr == 1){if($5-lastv > 0){print lastl; incr=0}} else{if($5-lastv < 0) incr=1}}; lastv=$5; lastl=$0}' - < $tmppipe \
+	    > $tmppks
+    fi
+    rm $tmppipe
+    if [ $lvl -gt 0 ]; then
+	rm $tmptxt $tmpsmth
+    fi
+done
+
+sort-bed $outpl
+rm $outpl
+rm -r $tmpd

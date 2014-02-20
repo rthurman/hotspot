@@ -1,0 +1,86 @@
+#! /bin/bash
+
+# Peak-finder binary
+pkfind=_PKFIND_BIN_
+
+# Bed format tags file.
+tags=_TAGS_
+
+# Tag density, 150bp window, sliding every 20bp.  Assumed to be
+# starched bed file, extension bed.starch.  Can also be a directory,
+# in which case the density file name will be assumed to be the name
+# of the tags file, minus the bam or bed.starch extension, with the
+# added extension tagdensity.bed.starch.
+dens=_DENS_
+bins=150
+step=20
+halfbin=$((bins/2))
+rangepad=$((bins/2-step/2))
+
+# Location of tags bed file (starched)
+libd=_OUTDIR_
+
+# Output location; full path
+outdir=_OUTDIR_
+
+# Do peak-finding genome-wide.
+chrfile=_CHROM_FILE_
+
+check=_CHECK_
+chkchr=_CHKCHR_
+
+## Wavelet smooth level.
+lvl=_PKFIND_SMTH_LVL_
+
+thisd=`pwd`
+thisscr=$0
+echo
+echo $thisscr
+
+proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
+tagsb=$libd/$proj.bed.starch
+
+pdir=$outdir/$proj-peaks
+mkdir -p $pdir
+
+## Check if already exists
+pk=$pdir/$proj.peaks.bed
+if [ $check == "T" ] && [ -e $pk ]; then
+    test=`grep $chkchr $pk | head -1`
+    if [ ${#test} != 0 ]; then 
+	echo "$thisscr: $pk already exists; Skipping."
+	exit
+    fi
+fi
+
+## Check if density file exists.
+## If directory or blank, create expected file name
+if [ ${#dens} == 0 ]; then
+    dens=$pdir/$proj.tagdensity.bed.starch
+elif [ -d $dens ]; then
+    dens=$dens/$proj.tagdensity.bed.starch
+fi
+
+## If density file doesn't exist, generate it.
+if [ ! -e $dens ] || [ -z $dens ]; then
+    echo "$thisscr: $dens does not exist; generating."
+    if [ ! -e $tagsb ] || [ -z $tagsb ]; then
+	echo "$thisscr: error: $tagsb does not exist; run run_make_lib to make it."
+	exit 1
+    fi
+
+    sort-bed $chrfile \
+	| awk -v b=$bins -v s=$step \
+	'BEGIN {OFS="\t"; hs=s/2; hb=b/2} ; { \
+               for ( start = $2+hb-hs; start < $3-hb-hs; start+=s) { \
+                 print $1, start, start+s, "."; \
+               } \
+             }' - \
+	| bedmap --range $rangepad --delim "\t" --echo --count - $tagsb \
+	| starch - \
+        > $dens
+fi
+
+$pkfind $dens $lvl $chrfile \
+    | awk -v h=$halfbin '{m=($2+$3)/2; left=m-h; if(left < 0) left=0; print $1"\t"left"\t"m+h"\t"$4"\t"$5}' - \
+    > $pk
