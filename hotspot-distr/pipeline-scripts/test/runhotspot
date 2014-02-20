@@ -4,6 +4,14 @@ scriptTokBin=/home/rthurman/proj/hotspot-distr-v4/ScriptTokenizer/src/script-tok
 pipeDir=/home/rthurman/proj/hotspot-distr-v4/pipeline-scripts
 tokenFile=runall.tokens.txt
 
+## Download test data if necessary
+data=test_DNase_seq.hg19.bam
+url=http://www.uwencode.org/proj/hotspot/$data
+if [ ! -s $data ]; then
+    echo "downloading test data..."
+    wget $url
+fi
+
 ## Do SPOT only (set _FDRS_ to "N" in runall.tokens.txt)
 # scripts="$pipeDir/run_make_lib
 #     $pipeDir/run_10kb_counts
