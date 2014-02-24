@@ -1,7 +1,7 @@
 #! /bin/bash
 
-scriptTokBin=/home/rthurman/proj/hotspot-distr-v4/ScriptTokenizer/src/script-tokenizer.py
-pipeDir=/home/rthurman/proj/hotspot-distr-v4/pipeline-scripts
+scriptTokBin=/full/path/to/hotspot-distr/ScriptTokenizer/src/script-tokenizer.py
+pipeDir=/full/path/to/hotspot-distr/pipeline-scripts
 tokenFile=runall.tokens.txt
 
 ## Download test data if necessary
