@@ -43,7 +43,7 @@ Making the hotspot program
 A compiled (Redhat linux, 64-bit) version of the hotspot binary is
 included in this distribution, in 
 
-    hotspot-deploy/bin/hotspot5
+    hotspot-deploy/bin/hotspot
 
 Type the program name without arguments for a usage statement.
 
