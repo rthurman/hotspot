@@ -4,12 +4,16 @@
 ## Resulting file will be used for hotspot scoring (passes 1 and 2,
 ## and re-scoring combined passes).
 
+thisscr="run_10kb_counts"
+echo
+echo $thisscr
+
 # Check if these results have already been computed?
 check=_CHECK_
 
 umap=_MAPPABLE_FILE_
 chrfile=_CHROM_FILE_
-chroms=$(cut -f1 $chrfile)
+chroms=$(awk '{print $1}' $chrfile)
 outdir=_OUTDIR_
 
 umap10kb=$outdir/$(basename $umap).counts.10kb
@@ -23,7 +27,7 @@ fi
 
 for chr in $chroms
 do
-    coords=$(grep -e $chr$ $chrfile)
+    coords=$(grep -w -e $chr$ $chrfile)
 
     echo $coords \
 	| awk -v b=$bins \
@@ -35,7 +39,7 @@ do
            d = e; \
          } \
        }' - \
-	| bedmap --delim "\t" --prec 0 --bp-ovr 1 --echo --bases - $umap \
+	| bedmap --ec --delim "\t" --prec 0 --bp-ovr 1 --echo --bases - $umap \
         | cut --output-delimiter=" " -f1,2,4 - \
 	> $chr.10kb.summed
 done

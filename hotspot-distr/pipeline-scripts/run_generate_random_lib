@@ -50,7 +50,7 @@ if [ ! -e $umap10kb ]; then
     exit 1
 fi
 
-chroms=$(cut -f1 $chrfile)
+chroms=$(awk '{print $1}' $chrfile)
 
 i=0
 totalbp=0
@@ -68,7 +68,7 @@ mkdir -p $tmpdir
 
 ## Generate random tags for each chromosome.
 tmpgnom=$tmpdir/$gnom.chr.lengths.$pid.tmp.txt
-cut -f1,3 $chrfile > $tmpgnom
+awk '{print $1"\t"$3}' $chrfile > $tmpgnom
 unmpbl=$tmpdir/K$K.$gnom.$pid.unmappable.tmp.bed
 bedops -d $chrfile $umap > $unmpbl
 
