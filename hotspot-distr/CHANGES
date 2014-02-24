@@ -1,104 +1,32 @@
-Overall capabilities
---------------------
+run_10kb_counts
+---------------
 
-Allow option to include ChIP-seq Input file.  This will trigger
-subtracting input tags from the ChIP tags in hotspots in the final
-scoring of hotspots (run_rescore_hotspot_passes).  New tokens
-introduced, and scripts run_make_lib and run_rescore_hotspots changed.
+1) Change grep command to include -w flag.  This is in response to
+problems using purely numeric chromosome names (like 2, 20, 22), which
+were not resolving uniquely.
 
-Added badspot calculation as an option.  This adds another token as
-well (see below).
+2) Add --ec to bedmap call.  Without this, can lead to un-flagged
+errors when using older versions of bedmap that can't accommodate
+starch files, but will nevertheless run on them without error, but
+producing bad results.  Tough to track done.
 
-run_make_lib
-------------
+3) Add identifying echo statement.
 
-1) Change awk call to call to bamToBed (bedTools), since it's
-hopefully more robust to what I had before; it should handle bam files
-with unmappable reads now, for instance.  Note that my earlier awk
-call (and Eric and Alex' bam2bed) uses the bitwise "and" operator,
-which is only available in gawk, and not "standard awk."
 
-2) Create bed.starch file for Input data, if requested.
+Multiple files: run_10kb_counts, run_generate_random_lib, wavePeaks
+-------------------------------------------------------------------
 
-3) For case where input tags file is bed.starch file, as before it
-assumes it is in adjusted form (1 bp coordinates of 5' end only) if
-tags file is in _OUTDIR_.  If the bed.starch tags file is *not* in
-_OUTDIR_, (and this is new) it will generate the adjusted form in
-_OUTDIR_, taking the 5' end, paying attention to strand if it is
-there.  This allows a user to provide a bed.starch tags file in a more
-natural form (ie, coordinates representing the entire tag, plus strand
-annotation; such as might be created from a bam file using bamToBed,
-for instance), although to do so requires its location to be somewhere
-other than _OUTDIR_.
+Change from using the "cut -fn" motif to the "awk '{print $n}'" motif,
+especially when using the chromosome file.  This is to handle the case
+where bed and/or chromosome files use spaces instead of tabs: the
+default for cut is a single tab, whereas the default for awk is any
+amount of whitespace.  
 
-run_rescore_hotspot_passes
---------------------------
+Without this change, and with spaces as the delimiter in the
+chromosome file, I was running into the infamous xfm error from the
+wavelets program:
 
-1) If requested, subtract off input tags from ChIP tags in hotspots
-before rescoring hotspots after both passes.
+modwt()
+wavelet xfm exceeds sample size
 
-2) Change to use un-rounded tag counts, as opposed to 100kb rounded
-tag counts, in z-score and p-value calculations (when genome-wide
-background is used).
 
-run_badspot
------------
-
-Added this in. Added token _OMIT_REGIONS_ for additional regions (like
-satellite repeats) for further filtering, beyond badspots.  This can
-be left blank, but must still be included as a token in
-runall.tokens.txt.
-
-run_pass2_hotspot
------------------
-
-Use variable _BACKGRD_WIN_ instead of hard-coded 50000 in section that
-creates file of intervals around hotspots (to be used in getting tags
-around and outside of hotspots).
-
-run_final
----------
-
-Added this in. This creates a simplified final output directory
-(${proj}-final) containing unthresholded hotspots and thresholded
-peaks and hotspots, with easier-to-understand file names.  Also
-includes a clean option (added token _CLEAN_) that removes all
-intermediate directories and files.  Files that are left around in
-_OUTDIR_ are:
-
-* badspot file, if created (*badspot.min5.thresh.80.bed)
-* bed.starch version of tags file (because this could be put there by
-the user).
-* tag counts file (kinda ambivalent about this one; I leave it because
-it is used by run_final)
-* SPOT file, if created (*spot.out)
-
-run_add_peaks_per_hotspot
--------------------------
-
-Accommodate starch, jarch, or bed files
-
-Added scripts (thanks to Eric Haugen) to hotspot-deploy/bin for generating mappability files
---------------------------------------------------------------------------------------------
-
-These require bowtie and bowtie-build from the bowtie aligner suite
-(http://bowtie-bio.sourceforge.net/) to be in the user's PATH.
-
-Script enumerateUniquelyMappableSpace generates uniquely mappable
-files for a given genome and tag length.
-
-Usage:
-
-enumerateUniquelyMappableSpace <genome> <read_length>
-
-For this to work, the Perl script enumerateUniquelyMappableSpace.pl
-needs to be in the user's path, and the rest of the .pl files need to
-be in the same directory as enumerateUniquelyMappableSpace.pl.  The
-scripts will, if necessary, download the fasta files from
-hgdownload.soe.ucsc.edu, then generate a bowtie index file for each
-(using bowtie-build), before using bowtie to determine the mappability
-uniqueness of all genome k-mers.
-
-Additionally, the Perl script writeChromInfoBed.pl can be used to
-generate the chromInfo.bed file (_CHROM_FILE_) for a given genome,
-given a list of its fasta files as arguments.
