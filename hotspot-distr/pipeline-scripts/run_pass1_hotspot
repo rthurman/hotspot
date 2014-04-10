@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 # Run first pass of hotspot.
 thisd=`pwd`
@@ -99,11 +100,11 @@ do
     outd=$dir-pass1
     outh=$outd/$proj.hotspot.out
     if [ -e $outh ]; then
-	test=`grep $chkchr $outh | head -1`
+	test=$(grep -w -m 1 $chkchr $outh || true)
 	if [ $check == "T" ] && [ ${#test} != 0 ]; then 
 	    echo "$thisscr: $proj pass1 already computed; skipping"
 	    cd $thisd
-	    ((i++))
+	    i=$((i+1))
 	    continue
 	fi
     fi
@@ -114,5 +115,5 @@ do
     $hotspot -range $winMin $winMax $winIncr -densWin $backgrdWin -o $proj.hotspot.out -i $lib -k $umap10kb -gendw -bckgnmsize $mpblgenome > $proj.stdout
 
     cd $thisd
-    ((i++))
+    i=$((i+1))
 done

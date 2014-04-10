@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 # Peak-finder binary
 pkfind=_PKFIND_BIN_
@@ -46,7 +47,7 @@ mkdir -p $pdir
 ## Check if already exists
 pk=$pdir/$proj.peaks.bed
 if [ $check == "T" ] && [ -e $pk ]; then
-    test=`grep $chkchr $pk | head -1`
+    test=$(grep -w -m 1 $chkchr $pk || true)
     if [ ${#test} != 0 ]; then 
 	echo "$thisscr: $pk already exists; Skipping."
 	exit

@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 ## Generate tiled count of uniquely mappable bases, every 10kb.
 ## Resulting file will be used for hotspot scoring (passes 1 and 2,

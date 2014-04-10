@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 ## Re-score first and second-pass hotspots using the same background.
 thisd=`pwd`
@@ -71,7 +72,7 @@ do
 	cd $thisd
 	continue
     fi
-    test=`cut -f1 $pass2hot | grep $chkchr - | head -1`
+    test=$(grep -w -m 1 $chkchr $pass2hot || true)
     if [ $check == "T" ] && [ ${#test} == 0 ]; then 
 	echo "$thisscr: $pass2hot does not contain data for $chkchr; Problem? Skipping."
 	cd $thisd
@@ -79,7 +80,7 @@ do
     fi
     
     if [ -e $zwig ]; then
-	test=`grep $chkchr $zwig | head -1`
+	test=$(grep -w -m 1 $chkchr $zwig || true)
 	if [ $check == "T" ] && [ ${#test} != 0 ]; then 
 	    echo "$thisscr: $zwig already computed; skipping"
 	    cd $thisd
@@ -170,7 +171,7 @@ do
         hotspot.mappable.txt tmp.bed tmp.merge.bed hotspot.both.passes.cluster.counts.bed hotspot.start.stop.txt tmp.all tmp.all.bed tmp.p tmp.binom
     ## Clean up pass2, but only if the above was successful.
     if [ -e $zwig ]; then
-  	test=$(grep $chkchr $zwig | head -1)
+	test=$(grep -w -m 1 $chkchr $zwig || true)
   	if [ ${#test} == 0 ]; then 
   	    echo "$zwig missing $chkchr data; problem?"
         else

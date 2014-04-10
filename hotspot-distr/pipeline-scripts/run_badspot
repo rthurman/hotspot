@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 # Compute badspots and create filtered tags file.
 
@@ -43,17 +44,22 @@ thisscr=run_badspot
 echo
 echo $thisscr
 
-# Check tags for proper naming.
-test=$(echo $tags | grep "\.bam$")
+# Check tags file
+if [ ! -s $tags ]; then
+    echo "$thisscr: $tags does not exist or is empty"
+    exit 1
+fi
+
+test=$(echo $tags | grep "\.bam$" || true)
 if [ ${#test} != 0 ]; then
     bam=T
 else
-    test=$(echo $tags | grep "\.bed\.starch$")
+    test=$(echo $tags | grep "\.bed\.starch$" || true)
     if [ ${#test} != 0 ]; then
 	bam=F
     else
 	echo "$thisscr: $tags must end in .bam or .bed.starch"
-	exit
+	exit 1
     fi
 fi
 
@@ -65,7 +71,7 @@ bad=$outdir/$proj.badspot.min${mintags}.thresh${thresh}.bed
 
 if [ -e $out ] && [ $tags == $out ]; then
     echo "$thisscr: input tags file $tags same as filtered tags destination"
-    exit
+    exit 1
 fi
 
 if [ $check == "T" ] && [ -s $bad ]; then 
@@ -142,11 +148,8 @@ fi
 
 skip=F
 if [ $check == "T" ] && [ -s $out ]; then 
-    test=`unstarch $chkchr $out | head -1`
-    if [ ${#test} != 0 ]; then 
-	echo "$thisscr: $out already exists; skipping"
-	skip=T
-    fi
+    echo "$thisscr: $out already exists; skipping"
+    skip=T
 fi
 
 if [ $skip == "F" ]; then

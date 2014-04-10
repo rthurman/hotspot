@@ -1,4 +1,5 @@
-#!/bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 # Merge and threshold hotspots from pass 2.
 
@@ -31,7 +32,7 @@ if [ ! -e $in ]; then
     cd $thisd
     exit 1
 fi
-test=`grep $chkchr $in | head -1`
+test=$(grep -w -m 1 $chkchr $in || true)
 if [ $check == "T" ] && [ ${#test} == 0 ]; then 
     echo "$thisscr: $in does not contain data for $chkchr; Problem? Skipping."
     cd $thisd

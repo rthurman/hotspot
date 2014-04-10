@@ -1,4 +1,5 @@
-#!/bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 ##
 ## NOTE: for efficiency, this script is set up to process all

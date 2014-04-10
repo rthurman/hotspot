@@ -1,4 +1,6 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
+
 # Work with jarched densities (needs appropriate binary _BINDIR_RAPPH_).
 
 gnom=_GENOME_
@@ -48,25 +50,17 @@ fi
 
 dentype=${dens##*.}
 
-if [ $dentype == "starch" ]; then
-    uncompr=unstarch
-elif [ $dentype == "jarch" ]; then
-    uncompr=gchr
-else
-    uncompr="cat"
-fi
-
 ## Check genome-wide output.
 pk=$pdir/$proj.peaks.bed
 if [ ! -e $pk ]; then
     echo "$thisscr: $pk does not exist; Check results. Skipping"
-    ((i++))
+    i=$((i+1))
     exit 1
 fi
-test=`grep $chkchr $pk | head -1`
+test=$(grep -w -m 1 $chkchr $pk || true)
 if [ $check == "T" ] && [ ${#test} == 0 ]; then 
     echo "$thisscr: $pk does not contain data for $chkchr; Problem? Skipping."
-    ((i++))
+    i=$((i+1))
     exit 1
 fi
 
@@ -89,10 +83,10 @@ do
 	echo "$thisscr: $wig does not exist; Check results. Skipping"
 	continue
     fi
-    test=`grep $chkchr $wig | head -1`
+    test=$(grep -w -m 1 $chkchr $wig || true)
     if [ $check == "T" ] && [ ${#test} == 0 ]; then 
 	echo "$thisscr: $wig does not contain data for $chkchr; Problem? Skipping."
-	((i++))
+	i=$((i+1))
 	continue
     fi
     tout=$outd/$proj.hotspot.twopass.fdr$fdr.merge.pks.tmp.bed
@@ -113,13 +107,23 @@ do
 	    echo "$thisscr: error: $dens does not exist; run run_wavelet_peak_finding to generate."
 	    exit 1
 	fi
-	$uncompr $dens \
-	    | bedmap --delim ";" --echo-map --max $tmpdom - \
-	    | awk 'BEGIN{FS=";"}{max=$NF; i=1; go=1; while(i<NF && go==1){split($i, a, "\t"); if(a[5] == max){print $i; go=0}; i++}}' \
-	    | awk -v sz=$halfHSS 'BEGIN {FS="\t";OFS=FS} {d=int(($2+$3)/2); e=d-sz; if ( e < 0 ) { e = 0; } print $1, e, d+sz, $4, int($5)}' \
-	    | sort-bed - \
-	    | bedops -u - $tout \
-	    > $combbed
+	if [ $dentype == "jarch" ]; then
+	    gchr $dens \
+		| bedmap --delim ";" --echo-map --max $tmpdom - \
+		| awk 'BEGIN{FS=";"}{max=$NF; i=1; go=1; while(i<NF && go==1){split($i, a, "\t"); if(a[5] == max){print $i; go=0}; i++}}' \
+		| awk -v sz=$halfHSS 'BEGIN {FS="\t";OFS=FS} {d=int(($2+$3)/2); e=d-sz; if ( e < 0 ) { e = 0; } print $1, e, d+sz, $4, int($5)}' \
+		| sort-bed - \
+		| bedops -u - $tout \
+		> $combbed
+	else
+	    ## Density is starch file, or text.
+	    bedmap --delim ";" --echo-map --max $tmpdom $dens \
+		| awk 'BEGIN{FS=";"}{max=$NF; i=1; go=1; while(i<NF && go==1){split($i, a, "\t"); if(a[5] == max){print $i; go=0}; i++}}' \
+		| awk -v sz=$halfHSS 'BEGIN {FS="\t";OFS=FS} {d=int(($2+$3)/2); e=d-sz; if ( e < 0 ) { e = 0; } print $1, e, d+sz, $4, int($5)}' \
+		| sort-bed - \
+		| bedops -u - $tout \
+		> $combbed
+	fi
     fi
 
     echo "track name=$name" > $combwig

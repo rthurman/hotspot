@@ -1,4 +1,5 @@
-#!/bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 # Merge and threshold hotspots from pass 1.  These will be used in the second pass.
 
@@ -52,7 +53,7 @@ do
 	cd $thisd
 	continue
     fi
-    test=`cut -f1 $hot | grep $chkchr - | head -1`
+    test=$(grep -w -m 1 $chkchr $hot || true)
     if [ $check == "T" ] && [ ${#test} == 0 ]; then 
 	echo "$thisscr: $hot does not contain data for $chkchr; Problem? Skipping."
 	cd $thisd
@@ -60,7 +61,7 @@ do
     fi
     
     if [ $check == "T" ] && [ -e $out2 ]; then
-	test=`grep $chkchr $out2 | head -1`
+	test=$(grep -w -m 1 $chkchr $out2 || true)
 	if [ ${#test} != 0 ]; then 
 	    echo "$thisscr: $out2 already computed; skipping"
 	    cd $thisd

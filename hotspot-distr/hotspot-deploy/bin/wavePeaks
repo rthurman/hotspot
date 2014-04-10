@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 ##
 ## Perform wavelet smoothing of the input file and return all local

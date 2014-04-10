@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 ## Pass 2 hotspots: locate shadowed peaks by searching in 50kb windows
 ## around hotspots within which we've called z-scored thresholded
@@ -77,11 +78,11 @@ do
     cd $outd
     echo "$thisscr: processing $outd"
     if [ -e $proj.pass2.hotspot.out ]; then
-	test=`grep $chkchr $proj.pass2.hotspot.out | head -1`
+	test=$(grep -w -m 1 $chkchr $proj.pass2.hotspot.out || true)
 	if [ $check == "T" ] && [ ${#test} != 0 ]; then 
 	    echo "$thisscr: $proj pass 2 already computed; skipping"
 	    cd $thisd
-	    ((i++))
+	    i=$((i+1))
 	    continue
 	fi
     fi
@@ -124,5 +125,5 @@ do
     rm $lib
 
     cd $thisd
-    ((i++))
+    i=$((i+1))
 done

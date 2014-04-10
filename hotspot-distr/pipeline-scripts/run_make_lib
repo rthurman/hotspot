@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 # Create input files to the hotspot process.
 
@@ -46,9 +47,15 @@ echo $thisscr
 proj=`basename $tags | sed s/\.bam$// | sed s/\.bed.starch$//`
 tagsb=$libd/$proj.bed.starch
 
-if [ ! -e $tagsb ]; then
+if [ ! -s $tagsb ]; then
     echo "$thisscr: creating bed file..."
-    test=$(echo $tags | grep "\.bam$")
+
+    if [ ! -s $tags ]; then
+	echo "$thisscr: $tags does not exist or is empty"
+	exit 1
+    fi
+
+    test=$(echo $tags | grep "\.bam$" || true)
     if [ ${#test} != 0 ]; then
 	bamToBed -i $tags \
 	    | awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
@@ -56,7 +63,7 @@ if [ ! -e $tagsb ]; then
 	    | starch - \
 	    > $tagsb
     else
-	test=$(echo $tags | grep "\.bed\.starch$")
+	test=$(echo $tags | grep "\.bed\.starch$" || true)
 	if [ ${#test} != 0 ]; then
 	    unstarch $tags \
        		| awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
@@ -65,7 +72,7 @@ if [ ! -e $tagsb ]; then
 		> $tagsb
 	else
 	    echo "$thisscr: $tags must end in .bam or .bed.starch"
-	    exit
+	    exit 1
 	fi
     fi
 fi
@@ -75,7 +82,7 @@ if [ $useinput == "T" ]; then
     tagsInputB=$libd/$projInput.bed.starch
     if [ ! -e $tagsInputB ]; then
 	echo "$thisscr: creating input tags bed file..."
-	test=$(echo $tagsInput | grep "\.bam$")
+	test=$(echo $tagsInput | grep "\.bam$" || true)
 	if [ ${#test} != 0 ]; then
 	    bamToBed -i $tagsInput \
 		| awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
@@ -83,7 +90,7 @@ if [ $useinput == "T" ]; then
 		| starch - \
 		> $tagsInputB
 	else
-	    test=$(echo $tagsInput | grep "\.bed\.starch$")
+	    test=$(echo $tagsInput | grep "\.bed\.starch$" || true)
 	    if [ ${#test} != 0 ]; then
 		unstarch $tagsInput \
 		    | awk 'BEGIN{OFS="\t"}{if($6 == "-") $2=$3-1; print $1, $2, $2+1}' \
@@ -92,7 +99,7 @@ if [ $useinput == "T" ]; then
 		    > $tagsInputB
 	    else
 		echo "$thisscr: $tagsInput must end in .bam or .bed.starch"
-		exit
+		exit 1
 	    fi
 	fi
     fi

@@ -1,3 +1,6 @@
+For v4.1
+---------
+
 run_10kb_counts
 ---------------
 
@@ -30,3 +33,37 @@ modwt()
 wavelet xfm exceeds sample size
 
 
+Multiple files: multiple bash scripts
+-------------------------------------------------------------------
+
+Extend error-detecting and error-handling capabilities.
+
+1) Change #! line to
+
+#! /usr/bin/env bash
+set -e -o pipefail
+
+which causes scripts to stop on any error within.  The -o pipefail
+option is required to trigger an error exit code whenever any element
+of a piped sequence returns an exit code > 0 (default behavior is that
+exit code of piped sequence is that of its final step).
+
+2) Add exit code 1 to run_badspot, run_make_lib error exit points.
+
+3) Exit with error if tags file does not exist or is empty
+(run_badspot and run_make_lib).
+
+4) Replace some tests that always return non-zero exit codes (several
+scripts).
+
+5) Change bedmap call in case of starch file in
+run_add_peaks_per_hotspot to accept starch file directly in file list,
+to avoid 141 exit code in some cases (when bedmap exits for efficiency
+before entire file is read).  When starch file is in argument list,
+bedmap does not have a internal pipe to break.
+
+6) Add "|| true" to grep commmands, which return exit code 1 if no
+match.
+
+7) Change increment statements from, for example, ((i++)) to
+i=$((i+1)).  The former returns exit code 1 if i=0 to start with.

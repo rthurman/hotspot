@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /usr/bin/env bash
+set -e -o pipefail
 
 scriptTokBin=/full/path/to/hotspot-distr/ScriptTokenizer/src/script-tokenizer.py
 pipeDir=/full/path/to/hotspot-distr/pipeline-scripts
