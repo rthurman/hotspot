@@ -1,6 +1,14 @@
 For v4.1
 ---------
 
+The most substantive changes for this distribution include better
+behavior on errors.  Previously some scripts would continue to run if
+an error or abnormal exit occurred within its bounds.  See changes
+related to "set -e -o pipefail", below.
+
+Details on all changes:
+
+
 run_10kb_counts
 ---------------
 
@@ -67,3 +75,10 @@ match.
 
 7) Change increment statements from, for example, ((i++)) to
 i=$((i+1)).  The former returns exit code 1 if i=0 to start with.
+
+
+run_badspot
+-------------------------------------------------------------------
+
+Remove use of /tmp.  All scripts now write temp files "in place" to
+output directories.
