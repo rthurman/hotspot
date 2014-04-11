@@ -82,3 +82,11 @@ run_badspot
 
 Remove use of /tmp.  All scripts now write temp files "in place" to
 output directories.
+
+
+run_add_peaks_per_hotspot
+-------------------------------------------------------------------
+
+Remove support for jarch density files.  Jarch format has been
+supplanted by starch, and its use triggers 141 exit codes, as
+previously noted.
