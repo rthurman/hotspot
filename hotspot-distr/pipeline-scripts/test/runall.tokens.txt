@@ -86,11 +86,15 @@ _HOTSPOT_ = /full/path/to/hotspot-distr/hotspot-deploy/bin/hotspot
 ## pipeline script run_final.
 _CLEAN_ = T
 
-## Peak-finding program.
+## Wavelets peak-finding program.
 _PKFIND_BIN_ = /full/path/to/hotspot-distr/hotspot-deploy/bin/wavePeaks
 ## Peak-finding smoothing level. If the resolution of the input file
 ## is x, then the results are smoothed out to a scale of (2^level)*x.
 _PKFIND_SMTH_LVL_ = 3
+
+## Lmax peak-finding program
+## Lmax density percentile level (default is 99) 
+_PKFIND_PERCENTILE_ = 99
 
 ## Random number seed, used for generating random tags for FDR thresholding.
 _SEED_=101

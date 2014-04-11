@@ -23,9 +23,25 @@ fi
 #     $pipeDir/run_spot"
 
 ## Do everything, including badspots and final cleanup
+# scripts="$pipeDir/run_badspot
+#     $pipeDir/run_make_lib
+#     $pipeDir/run_wavelet_peak_finding
+#     $pipeDir/run_10kb_counts
+#     $pipeDir/run_generate_random_lib
+#     $pipeDir/run_pass1_hotspot
+#     $pipeDir/run_pass1_merge_and_thresh_hotspots
+#     $pipeDir/run_pass2_hotspot
+#     $pipeDir/run_rescore_hotspot_passes
+#     $pipeDir/run_spot
+#     $pipeDir/run_thresh_hot.R
+#     $pipeDir/run_both-passes_merge_and_thresh_hotspots
+#     $pipeDir/run_add_peaks_per_hotspot
+#     $pipeDir/run_final"
+
+## Do everything, use lmax peak-finding (requires lmax and kth in your path)
 scripts="$pipeDir/run_badspot
     $pipeDir/run_make_lib
-    $pipeDir/run_wavelet_peak_finding
+    $pipeDir/run_lmax_peak_finding
     $pipeDir/run_10kb_counts
     $pipeDir/run_generate_random_lib
     $pipeDir/run_pass1_hotspot
