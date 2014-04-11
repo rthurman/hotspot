@@ -36,9 +36,6 @@ padsm=`echo $winsm/2 | bc`
 padlg=`echo $winlg/2 | bc`
 
 
-pid=$$
-tmpd=/tmp/tmp$pid
-
 thisd=`pwd`
 thisscr=run_badspot
 echo
@@ -82,12 +79,10 @@ else
     ## 
     for off in $offs
     do
-	ctsm=$tmpd/$proj.win${winsm}-step${step}.off${off}.bed
-	ctlg=$tmpd/$proj.win${winlg}-step${step}.off${off}.bed
-	tmptsm=$ctsm.tile
-	tmptlg=$ctlg.tile
-	badt=$tmpd/$proj.badspot.min${mintags}.thresh${thresh}.off$off.bed
-	mkdir -p $tmpd
+	ctsm=$outdir/$proj.win${winsm}-step${step}.off${off}.bed
+	tmptsm=$outdir/$proj.win${winsm}-step${step}.off${off}.bed.tile
+	tmptlg=$outdir/$proj.win${winlg}-step${step}.off${off}.bed.tile
+	badt=$outdir/$proj.badspot.min${mintags}.thresh${thresh}.off$off.bed
 	## Small window
 	echo "$thisscr: generating tile, small window..."
 	awk -v step=$step -v pad=$padsm -v off=$off \
@@ -136,8 +131,8 @@ else
     done
 
     ## Merge step
-    out1=$tmpd/$proj.badspot.min${mintags}.thresh${thresh}.off${Offs[0]}.bed
-    out2=$tmpd/$proj.badspot.min${mintags}.thresh${thresh}.off${Offs[1]}.bed
+    out1=$outdir/$proj.badspot.min${mintags}.thresh${thresh}.off${Offs[0]}.bed
+    out2=$outdir/$proj.badspot.min${mintags}.thresh${thresh}.off${Offs[1]}.bed
     bedops -m $out1 $out2 > $bad
     rm $out1 $out2
 fi
