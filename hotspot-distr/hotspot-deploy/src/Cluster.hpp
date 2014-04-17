@@ -23,6 +23,12 @@
 
 namespace hotspot
 {
+    // Print version statement
+    void Version();
+
+    // Print usage statement
+    void Usage(std::ostream& outputStream);
+
 	// Process program Input
 	void GetArgs (int argc, char **argv);
 
