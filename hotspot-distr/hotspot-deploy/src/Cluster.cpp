@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <map>
+#include <exception>
 
 extern "C"
 {
@@ -46,6 +47,15 @@ namespace hotspot
 	bool useFuzzyThreshold = HotspotDefaults::USE_FUZZY_THRESHOLD;
 	int backgroundTotalTagCount;
 
+    struct NotEnoughArgsException { /* */ };
+    struct HelpException { /* */ };
+    struct VersionException { /* */ };
+
+    const std::string revision = "4.1.0";
+    const std::string authors = "Mike Hawrylycz, Bob Thurman";
+    const std::string contributors = "Scott Kuehn, Eric Haugen";
+    const std::string citation = "Sam John et al., Chromatin accessibility pre-determines glucocorticoid receptor binding patterns, Nature Genetics 43, 264-268";
+
 } // namespace
 
 int main( int argc, char **argv )
@@ -59,12 +69,22 @@ int main( int argc, char **argv )
     hotspot::lowInt = hotspot::HotspotDefaults::LOW_INTERVAL_WIDTH;   // range and interval for scanning
     hotspot::highInt = hotspot::HotspotDefaults::HIGH_INTEVAL_WIDTH;
     hotspot::incInt = hotspot::HotspotDefaults::INTERVAL_INCREMENT;
-	hotspot::fuzzySeed = hotspot::HotspotDefaults::FUZZY_SEED;
+    hotspot::fuzzySeed = hotspot::HotspotDefaults::FUZZY_SEED;
     hotspot::totaltagcount = 0;
     hotspot::densityWin = hotspot::HotspotDefaults::DENSITY_WIN;
 
+    // Read in arguments
+    try {
+	hotspot::GetArgs( argc, argv );
+    } catch (hotspot::HelpException& h) {
+        hotspot::Usage( std::cout );
+    } catch (hotspot::NotEnoughArgsException& n) {
+        hotspot::Usage( std::cerr );
+    } catch (hotspot::VersionException& v) {
+        hotspot::Version();
+    }
+
 	// Fetch input data
-	hotspot::GetArgs( argc, argv);
 	hotspot::InputDataReader inputDataReader( hotspot::libpath );
 	hotspot::totaltagcount = inputDataReader.numLines( );
 	std::cout << "TotalTagCount: " << hotspot::totaltagcount << std::endl;
@@ -557,34 +577,60 @@ namespace hotspot
 		}
 	}
 
+    void Usage(std::ostream& outputStream) 
+    {
+        std::string msg  = "HotSpot5 Usage:";
+        msg += "\n    -h | --help (show this usage message)";
+        msg += "\n    -v | --version (show application version and other details)";
+        msg += "\n    -range <int> <int> <int> (lower upper increment windows)";
+        msg += "\n    -densWin <int> (background window)";
+        msg += "\n    -minsd <float> (minimum for anomaly)";
+        msg += "\n    -fuzzy (flag to randomly adjust the hotspot selection threshold by 0-0.5)";
+        msg += "\n    -fuzzy-seed <int> (for use with fuzzy, seed the random number gen. Default = 1 )";
+        msg += "\n    -i <file-name> (input library file, must be in lexicographical sorted order)";
+        msg += "\n    -k <file-name> (input K-mer density file, must be in lexicographical sorted order)";
+        msg += "\n    -o <file-name> (output file for results)";
+        msg += "\n    -gendw (flag to use genome-wide density window if it gives lower z-score)";
+        msg += "\n    -bckgnmsize <float> (for computing background - default=2.55E9)";
+        msg += "\n    -bckntags <float> (for computing background - default=number of tags in library)";
+        msg += "\n";
+
+        outputStream << msg << std::endl;
+        
+        if (&outputStream == &std::cout)
+            std::exit(EXIT_SUCCESS);
+        
+        std::exit(EXIT_FAILURE);
+    }
+
+    void Version()
+    {
+        std::cout << "Hotspot5 About:" << std::endl;
+        std::cout << "  citation:      " << hotspot::citation << std::endl;
+        std::cout << "  version:       " << hotspot::revision << std::endl;
+        std::cout << "  authors:       " << hotspot::authors << std::endl;
+        std::cout << "  contributors:  " << hotspot::contributors << std::endl;
+        std::exit(EXIT_SUCCESS);
+    }
 
 	/**
 	 * Process program input and initialize this instance of Hotspot
 	 */
 	void GetArgs (int argc, char **argv)
 	{
-		if (argc < 2)
-		{
-			std::string msg  = "HotSpot5 Usage:";
-			msg += "\n    -range <int> <int> <int> (lower upper increment windows)";
-			msg += "\n    -densWin <int> (background window)";
-			msg += "\n    -minsd <float> (minimum for anomaly)";
-			msg += "\n    -fuzzy (flag to randomly adjust the hotspot selection threshold by 0-0.5)";
-			msg += "\n    -fuzzy-seed <int> (for use with fuzzy, seed the random number gen. Default = 1 )";
-			msg += "\n    -i <file-name> (input library file, must be in lexicographical sorted order)";
-			msg += "\n    -k <file-name> (input K-mer density file, must be in lexicographical sorted order)";
-			msg += "\n    -o <file-name> (output file for results)";
-			msg += "\n    -gendw (flag to use genome-wide density window if it gives lower z-score)";
-			msg += "\n    -bckgnmsize <float> (for computing background - default=2.55E9)";
-			msg += "\n    -bckntags <float> (for computing background - default=number of tags in library)";
-			msg += "\n";
-			std::cerr << msg << std::endl;
-			std::exit( 1 );
-		}
+            if (argc < 2) {
+                throw(NotEnoughArgsException());
+            }
 
 	  for( int i = 1 ; i < argc; i++ )
 	  {
-		if( std::strcmp( argv[ i ], "-range" ) == 0 )
+              if (( std::strcmp( argv[ i ], "-h" ) == 0 ) || ( std::strcmp( argv[ i ], "--help" ) == 0 )) {
+                  throw(HelpException());
+              }
+              else if (( std::strcmp( argv[ i ], "-v" ) == 0 ) || ( std::strcmp( argv[ i ], "--version" ) == 0 )) {
+                  throw(VersionException());
+              }
+              else if( std::strcmp( argv[ i ], "-range" ) == 0 )
 		{
 		  lowInt = std::atoi( argv[ i + 1 ] );
 		  highInt = std::atoi( argv[ i + 2 ] );
