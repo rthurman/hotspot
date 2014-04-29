@@ -6,7 +6,7 @@ short-read sequence tags mapped to the genome using a binomial
 distribution model. Regions flagged by the algorithm are called
 "hotspots." The algorithm utilizes a local background model that
 automatically normalizes for large regions of elevated tag levels due
-to, for example, copy number effects. Hotpsot is otherwise able to
+to, for example, copy number effects. Hotspot is otherwise able to
 detect regions of enrichment of highly-variable size, making it
 applicable to both broad and highly-punctate signals. We have applied
 it extensively to DNase-seq and ChIP-seq data, including transcription
